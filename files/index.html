@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="5 Crowns">
+  <title>5 Crowns</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- HOME SCREEN -->
+  <div id="home-screen" class="screen">
+    <div class="crown-logo">♛</div>
+    <div class="game-title">5 CROWNS</div>
+    <div class="game-subtitle">"The game isn't over 'til the Kings go wild!"</div>
+    <div class="home-buttons">
+      <button class="btn btn-primary" onclick="showScreen('bot-setup-screen')">🤖 Play with Bots</button>
+      <button class="btn btn-secondary" onclick="showScreen('create-lobby-screen')">🌐 Create Lobby</button>
+      <button class="btn btn-secondary" onclick="showScreen('join-lobby-screen')">🔗 Join Lobby</button>
+    </div>
+    <div class="version-tag">V1.0 · 2-6 PLAYERS</div>
+  </div>
+
+  <!-- BOT SETUP SCREEN -->
+  <div id="bot-setup-screen" class="screen hidden">
+    <button class="back-btn" onclick="showScreen('home-screen')">← Back</button>
+    <div class="panel">
+      <h2>BOT GAME</h2>
+      <div class="input-group">
+        <label>Your Name</label>
+        <input type="text" id="bot-player-name" placeholder="Enter your name" maxlength="12" value="Player">
+      </div>
+      <div class="input-group">
+        <label>Number of Bots</label>
+        <input type="number" id="bot-count" min="1" max="5" value="3">
+      </div>
+      <button class="btn btn-primary" onclick="startBotGame()">Start Game</button>
+    </div>
+  </div>
+
+  <!-- CREATE LOBBY SCREEN -->
+  <div id="create-lobby-screen" class="screen hidden">
+    <button class="back-btn" onclick="showScreen('home-screen')">← Back</button>
+    <div class="panel">
+      <h2>CREATE LOBBY</h2>
+      <div class="input-group">
+        <label>Your Name</label>
+        <input type="text" id="create-player-name" placeholder="Enter your name" maxlength="12" value="Host">
+      </div>
+      <button class="btn btn-primary" onclick="createLobby()">Create Room</button>
+    </div>
+  </div>
+
+  <!-- LOBBY WAITING SCREEN -->
+  <div id="lobby-waiting-screen" class="screen hidden">
+    <button class="back-btn" onclick="leaveLobby()">← Leave</button>
+    <div class="panel">
+      <h2>ROOM CODE</h2>
+      <div class="code-display" id="lobby-code-display">------</div>
+      <div class="hint-text">Share this code with friends</div>
+      <div class="lobby-players" id="lobby-players-list"></div>
+      <div class="hint-text" id="lobby-wait-msg">Waiting for players... (2-6 required)</div>
+      <button class="btn btn-primary" id="start-lobby-btn" onclick="startLobbyGame()" disabled style="opacity:0.4">Start Game</button>
+    </div>
+  </div>
+
+  <!-- JOIN LOBBY SCREEN -->
+  <div id="join-lobby-screen" class="screen hidden">
+    <button class="back-btn" onclick="showScreen('home-screen')">← Back</button>
+    <div class="panel">
+      <h2>JOIN LOBBY</h2>
+      <div class="input-group">
+        <label>Your Name</label>
+        <input type="text" id="join-player-name" placeholder="Enter your name" maxlength="12" value="Player">
+      </div>
+      <div class="input-group">
+        <label>Room Code</label>
+        <input type="text" id="join-code-input" placeholder="6-letter code" maxlength="6" style="letter-spacing:6px;text-transform:uppercase;font-size:24px">
+      </div>
+      <button class="btn btn-primary" onclick="joinLobby()">Join Game</button>
+      <div class="hint-text" id="join-error" style="color:#e74c3c;display:none">Room not found or full</div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen hidden">
+    <div id="game-layout">
+      <!-- Opponent areas (filled dynamically) -->
+      <div id="opponent-areas-container"></div>
+
+      <!-- Center piles + turn label + scores -->
+      <div id="center-area">
+
+        <!-- Whose turn label sits above both piles -->
+        <div id="center-turn-label" style="
+          position:absolute; top:-28px; left:50%; transform:translateX(-50%);
+          font-family:'Cinzel',serif; font-size:12px; letter-spacing:1px;
+          color:var(--gold); white-space:nowrap; text-align:center;
+        "></div>
+
+        <div id="center-piles-row">
+          <div class="pile-container">
+            <div class="pile-stack" id="draw-pile-visual" onclick="drawFromDeck()">
+              <div class="card face-down"></div>
+              <div class="card face-down"></div>
+              <div class="card face-down" id="top-draw-card"></div>
+            </div>
+          </div>
+
+          <div class="pile-container">
+            <div id="discard-drop-target" class="pile-stack" style="cursor:default">
+              <div id="discard-pile-display"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div id="action-area">
+          <div id="action-row-top" style="display:flex;gap:4px;width:100%;margin-bottom:6px">
+            <button class="action-btn action-btn-continue" id="continue-btn" onclick="confirmDiscard()" disabled style="flex:2">Continue</button>
+            <button class="action-btn action-btn-undo" id="undo-btn" onclick="undoDiscard()" disabled style="flex:1">Undo</button>
+          </div>
+          <div id="action-row-bottom" style="width:100%">
+            <button class="action-btn action-btn-go-out" id="go-out-btn" onclick="tryGoOut()" disabled style="width:100%">Go Out</button>
+          </div>
+        </div>
+
+        <!-- Scores table -->
+        <div id="center-scores">
+          <div id="center-scores-rows"></div>
+        </div>
+      </div>
+
+      <!-- Player area -->
+      <div id="player-area">
+        <div id="player-label" style="
+          position:absolute;
+          bottom:100%;
+          left:0; right:0;
+          text-align:center;
+          font-family:'Cinzel',serif;
+          font-size:12px;
+          letter-spacing:1px;
+          color:rgba(255,255,255,0.75);
+          padding-bottom:4px;
+          pointer-events:none;
+        "></div>
+        <div id="player-hand-wrapper">
+          <div id="player-hand"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dealing overlay -->
+    <div id="dealing-screen">
+      <div id="dealing-status">Dealing cards...</div>
+    </div>
+  </div>
+
+</div><!-- end #app -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Drag ghost -->
+<div id="drag-ghost"></div>
+
+<!-- Game over modal -->
+<div class="modal-overlay" id="game-over-modal">
+  <div class="modal">
+    <h2>👑 Game Over!</h2>
+    <div id="game-over-content"></div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-primary" onclick="showScreen('home-screen');closeModal('game-over-modal')">Main Menu</button>
+      <button class="btn btn-secondary" onclick="restartGame()">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<!-- Went out notification -->
+<div id="went-out-overlay">
+  <div id="went-out-banner"></div>
+</div>
+
+<!-- Scripts: game logic first, then rendering -->
+<script src="game.js"></script>
+<script src="render.js"></script>
+<script>
+  // ========================
+  // INIT
+  // ========================
+  showScreen('home-screen');
+
+  document.getElementById('draw-pile-visual').addEventListener('click', () => {
+    if (isMyTurn() && G.drawnCard === null && (G.phase === 'draw' || G.phase === 'lastTurns') && !G.dealing) {
+      drawFromDeck();
+    }
+  });
+</script>
+</body>
+</html>
