@@ -246,18 +246,19 @@ function joinLobby() {
     const newPlayer = { name, id: myPlayerId, isHost: false };
     // Use a transaction so two people joining simultaneously don't collide
     fbLobbyRef.transaction(current => {
-      if (!current || current.started || (current.players && current.players.length >= 6)) return; // abort
-      current.players = current.players || [];
-      current.players.push(newPlayer);
-      return current;
+        if (current === null) return current; // let Firebase retry (cold cache)
+        if (current.started || (current.players && current.players.length >= 6)) return; // abort: room full/started
+        current.players = current.players || [];
+        current.players.push(newPlayer);
+        return current;
     }, (err2, committed, snap2) => {
-      if (!committed || err2) { err.style.display = 'block'; return; }
-      const updated = snap2.val();
-      myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
-      document.getElementById('lobby-code-display').textContent = code;
-      updateLobbyUI(updated);
-      showScreen('lobby-waiting-screen');
-      attachLobbyListener();
+        if (!committed || err2) { err.style.display = 'block'; return; }
+        const updated = snap2.val();
+        myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
+        document.getElementById('lobby-code-display').textContent = code;
+        updateLobbyUI(updated);
+        showScreen('lobby-waiting-screen');
+        attachLobbyListener();
     });
   });
 }
