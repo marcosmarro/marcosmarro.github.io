@@ -231,42 +231,85 @@ function joinLobby() {
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
   const err  = document.getElementById('join-error');
 
+  if (!code || code.length !== 6) {
+    err.textContent = 'Please enter a 6-letter room code';
+    err.style.display = 'block';
+    return;
+  }
+
+  err.style.display = 'none';
+  const joinBtn = document.querySelector('#join-lobby-screen .btn-primary');
+  if (joinBtn) { joinBtn.disabled = true; joinBtn.textContent = 'Joining...'; }
+
+  isLocalHost = false;
+  lobbyCode   = code;
+  myPlayerId  = 'p_' + Date.now();
+  const newPlayer = { name, id: myPlayerId, isHost: false };
+
   fbLobbyRef = fbDb.ref('lobbies/' + code);
-  fbLobbyRef.once('value', snap => {
-    const data = snap.val();
-    if (!data || data.started || (data.players && data.players.length >= 6)) {
+
+  // Use transaction directly — skipping the once() pre-check which fails on cold
+  // cache (first read on a new device returns null before Firebase has synced).
+  // The transaction itself handles the "room not found" case via applyLocally:false.
+  fbLobbyRef.transaction(current => {
+    // current === null on cold cache → return undefined to tell Firebase to retry
+    if (current === null) return undefined;
+    // Abort if room is gone, already started, or full
+    if (!current || current.started || (current.players && current.players.length >= 6)) {
+      return; // returning undefined = abort
+    }
+    current.players = current.players || [];
+    current.players.push(newPlayer);
+    return current;
+  }, (txErr, committed, snap2) => {
+    if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = 'Join Game'; }
+
+    if (txErr) {
+      console.error('Transaction error:', txErr);
+      err.textContent = 'Connection error. Please try again.';
       err.style.display = 'block';
       return;
     }
-    err.style.display = 'none';
-    isLocalHost  = false;
-    lobbyCode    = code;
-    myPlayerId   = 'p_' + Date.now();
+    if (!committed) {
+      // Room didn't exist, was started, or was full — do a one-time read to
+      // give a more specific error message.
+      fbDb.ref('lobbies/' + code).once('value', snap => {
+        const data = snap.val();
+        if (!data) {
+          err.textContent = 'Room not found. Check the code and try again.';
+        } else if (data.started) {
+          err.textContent = 'That game has already started.';
+        } else {
+          err.textContent = 'Room is full (6/6 players).';
+        }
+        err.style.display = 'block';
+      });
+      return;
+    }
 
-    const newPlayer = { name, id: myPlayerId, isHost: false };
-    // Use a transaction so two people joining simultaneously don't collide
-    fbLobbyRef.transaction(current => {
-        if (current === null) return; // return undefined = tell Firebase to retry (cold cache); returning null = abort
-        if (current.started || (current.players && current.players.length >= 6)) return; // abort: room full/started
-        current.players = current.players || [];
-        current.players.push(newPlayer);
-        return current;
-    }, (err2, committed, snap2) => {
-        if (err2 || !committed) { err.style.display = 'block'; return; }
-        const updated = snap2.val();
-        if (!updated) { err.style.display = 'block'; return; }
-        myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
-        document.getElementById('lobby-code-display').textContent = code;
-        updateLobbyUI(updated);
-        showScreen('lobby-waiting-screen');
-        attachLobbyListener();
-    });
-  });
+    const updated = snap2.val();
+    if (!updated) { err.textContent = 'Room not found.'; err.style.display = 'block'; return; }
+
+    myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
+    document.getElementById('lobby-code-display').textContent = code;
+    updateLobbyUI(updated);
+    showScreen('lobby-waiting-screen');
+    attachLobbyListener();
+  }, false /* applyLocally=false so local cache never fakes a null */);
 }
 
 function leaveLobby() {
   if (fbLobbyListener && fbLobbyRef) fbLobbyRef.off('value', fbLobbyListener);
-  if (isLocalHost && fbLobbyRef) fbLobbyRef.remove();
+  if (isLocalHost && fbLobbyRef) {
+    fbLobbyRef.remove();
+  } else if (fbLobbyRef && myPlayerId) {
+    // Non-host: remove self from players list without destroying the lobby
+    fbLobbyRef.transaction(current => {
+      if (!current) return current;
+      current.players = (current.players || []).filter(p => p.id !== myPlayerId);
+      return current;
+    });
+  }
   fbLobbyRef = null;
   showScreen('home-screen');
 }
@@ -366,7 +409,7 @@ function startMultiplayerGame(data, myIdx) {
     // Host sets up and pushes initial state; everyone else listens
     G.round          = 1;
     G.startingPlayer = 0;
-    startRound();          // startRound calls pushGameState() at the end
+    startRound();          // startRound calls pushGameState() then attachGameListener()
   } else {
     showScreen('game-screen');
     attachGameListener();
