@@ -26,7 +26,7 @@ let G = {
 // CARD DEFINITIONS
 // ========================
 const SUITS = ['clubs','hearts','spades','stars','diamonds'];
-const SUIT_SYMBOLS = { clubs:'♣', hearts:'♥', spades:'♠', stars:'★', diamonds:'♦' };
+const SUIT_SYMBOLS = { clubs:'♣︎', hearts:'♥︎', spades:'♠︎', stars:'★︎', diamonds:'♦︎' };
 const VALUES = [3,4,5,6,7,8,9,10,'J','Q','K'];
 const VALUE_POINTS = { J:11, Q:12, K:13 };
 
