@@ -112,6 +112,15 @@ let fbLobbyRef = null, fbGameRef = null, fbLobbyListener = null, fbGameListener 
 
 function initFirebase() {
   if (fbApp) return;
+  // Guard: catch missing/placeholder credentials before they cause a silent hang
+  if (!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.startsWith('YOUR_')) {
+    throw new Error(
+      'Firebase is not configured.\n\n' +
+      'Open game.js and replace the FIREBASE_CONFIG placeholder values with ' +
+      'your real Firebase project credentials.\n\n' +
+      'Get them at: https://console.firebase.google.com → Project Settings → Your Apps → Web App'
+    );
+  }
   fbApp = firebase.initializeApp(FIREBASE_CONFIG);
   fbDb  = firebase.database();
 }
@@ -132,7 +141,7 @@ function generateCode() {
 }
 
 function createLobby() {
-  initFirebase();
+  try { initFirebase(); } catch (e) { alert(e.message); return; }
   const name = document.getElementById('create-player-name').value.trim() || 'Host';
   lobbyCode   = generateCode();
   isLocalHost = true;
@@ -149,14 +158,19 @@ function createLobby() {
   };
 
   fbLobbyRef = fbDb.ref('lobbies/' + lobbyCode);
+
+  // Show waiting screen immediately — don't block on Firebase round-trip
+  document.getElementById('lobby-code-display').textContent = lobbyCode;
+  updateLobbyUI(lobbyData);
+  showScreen('lobby-waiting-screen');
+
   fbLobbyRef.set(lobbyData).then(() => {
-    // Remove lobby from Firebase when host closes/leaves
     fbLobbyRef.onDisconnect().remove();
-    updateLobbyUI(lobbyData);
-    showScreen('lobby-waiting-screen');
     attachLobbyListener();
   }).catch(err => {
+    console.error('Firebase write failed:', err);
     showToast('Connection error: ' + err.message);
+    showScreen('create-lobby-screen'); // return user if write fails
   });
 }
 
@@ -210,7 +224,7 @@ function startLobbyGame() {
 }
 
 function joinLobby() {
-  initFirebase();
+  try { initFirebase(); } catch (e) { alert(e.message); return; }
   const name = document.getElementById('join-player-name').value.trim() || 'Player';
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
   const err  = document.getElementById('join-error');
