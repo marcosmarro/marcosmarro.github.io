@@ -95,6 +95,7 @@ function showScreen(id) {
 // ========================
 let lobbyCode = '';
 let lobbyPollInterval = null;
+let isLocalHost = false;
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -106,6 +107,7 @@ function generateCode() {
 function createLobby() {
   const name = document.getElementById('create-player-name').value.trim() || 'Host';
   lobbyCode = generateCode();
+  isLocalHost = true;
   document.getElementById('lobby-code-display').textContent = lobbyCode;
 
   const lobbyData = {
@@ -146,8 +148,13 @@ function updateLobbyUI(data) {
   const canStart = data.players.length >= 2;
   const startBtn = document.getElementById('start-lobby-btn');
   if (startBtn) {
-    startBtn.disabled = !canStart;
-    startBtn.style.opacity = canStart ? '1' : '0.4';
+    if (!isLocalHost) {
+      startBtn.style.display = 'none';
+    } else {
+      startBtn.style.display = '';
+      startBtn.disabled = !canStart;
+      startBtn.style.opacity = canStart ? '1' : '0.4';
+    }
   }
   document.getElementById('lobby-wait-msg').textContent =
     `${data.players.length}/6 players — ${canStart ? 'Ready to start!' : 'Need at least 2 players'}`;
@@ -173,8 +180,9 @@ function joinLobby() {
     return;
   }
   err.style.display = 'none';
+  isLocalHost = false;
 
-  const newPlayer = { name, id: 'p_' + Date.now() };
+  const newPlayer = { name, id: 'p_' + Date.now(), isHost: false };
   data.players.push(newPlayer);
   localStorage.setItem('lobby_' + code, JSON.stringify(data));
 
