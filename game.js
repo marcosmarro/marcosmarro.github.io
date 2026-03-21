@@ -251,13 +251,29 @@ function joinLobby() {
   // Use transaction directly — skipping the once() pre-check which fails on cold
   // cache (first read on a new device returns null before Firebase has synced).
   // The transaction itself handles the "room not found" case via applyLocally:false.
+  // Track why we aborted so the completion callback can show the right error
+  let abortReason = null;
+
   fbLobbyRef.transaction(current => {
-    // current === null on cold cache → return undefined to tell Firebase to retry
-    if (current === null) return undefined;
-    // Abort if room is gone, already started, or full
-    if (!current || current.started || (current.players && current.players.length >= 6)) {
-      return; // returning undefined = abort
+    // current === null means Firebase hasn't fetched the node yet (cold cache).
+    // Returning undefined here tells Firebase to abort — we can't distinguish
+    // "retry" from "abort" with undefined, so we use applyLocally:false (below)
+    // which makes Firebase always go to the server first, so null here genuinely
+    // means the path doesn't exist.
+    if (current === null) {
+      abortReason = 'not_found';
+      return undefined; // abort
     }
+    if (current.started) {
+      abortReason = 'started';
+      return undefined; // abort
+    }
+    if (current.players && current.players.length >= 6) {
+      abortReason = 'full';
+      return undefined; // abort
+    }
+    // Room exists, not started, not full — join it
+    abortReason = null;
     current.players = current.players || [];
     current.players.push(newPlayer);
     return current;
@@ -271,19 +287,16 @@ function joinLobby() {
       return;
     }
     if (!committed) {
-      // Room didn't exist, was started, or was full — do a one-time read to
-      // give a more specific error message.
-      fbDb.ref('lobbies/' + code).once('value', snap => {
-        const data = snap.val();
-        if (!data) {
-          err.textContent = 'Room not found. Check the code and try again.';
-        } else if (data.started) {
-          err.textContent = 'That game has already started.';
-        } else {
-          err.textContent = 'Room is full (6/6 players).';
-        }
-        err.style.display = 'block';
-      });
+      if (abortReason === 'not_found') {
+        err.textContent = 'Room not found. Check the code and try again.';
+      } else if (abortReason === 'started') {
+        err.textContent = 'That game has already started.';
+      } else if (abortReason === 'full') {
+        err.textContent = 'Room is full (6/6 players).';
+      } else {
+        err.textContent = 'Could not join. Please try again.';
+      }
+      err.style.display = 'block';
       return;
     }
 
@@ -295,7 +308,7 @@ function joinLobby() {
     updateLobbyUI(updated);
     showScreen('lobby-waiting-screen');
     attachLobbyListener();
-  }, false /* applyLocally=false so local cache never fakes a null */);
+  }, false /* applyLocally:false → Firebase always reads from server first, so null = truly doesn't exist */);
 }
 
 function leaveLobby() {
