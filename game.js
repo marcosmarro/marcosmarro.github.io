@@ -104,7 +104,7 @@ function generateCode() {
 }
 
 function createLobby() {
-  const name = document.getElementById('create-player-name').value.trim() || 'Host';
+  const name = document.getElementById('create-player-name').value.trim();
   lobbyCode = generateCode();
   document.getElementById('lobby-code-display').textContent = lobbyCode;
 
@@ -163,7 +163,7 @@ function startLobbyGame() {
 }
 
 function joinLobby() {
-  const name = document.getElementById('join-player-name').value.trim() || 'Player';
+  const name = document.getElementById('join-player-name').value.trim();
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
   const err = document.getElementById('join-error');
 
