@@ -96,14 +96,15 @@ function showScreen(id) {
 // Create a free project at https://console.firebase.google.com
 // then go to Project Settings → Your Apps → Web App → SDK setup & config
 // ========================
-const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyB1PflQzaBtMKgBoJRW6bGLUW_YJ0Vk5BU",
+  authDomain: "crowns-128c6.firebaseapp.com",
+  projectId: "crowns-128c6",
+  storageBucket: "crowns-128c6.firebasestorage.app",
+  messagingSenderId: "425271577628",
+  appId: "1:425271577628:web:a0a67b3d9e577af5b4a3d9",
+  measurementId: "G-ECFP9L9455"
 };
 
 // Firebase references (populated after init)
