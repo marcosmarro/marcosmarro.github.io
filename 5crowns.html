@@ -319,7 +319,7 @@
     flex-direction: column;
     align-items: center;
     gap: 0;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, calc(-50% + 25px));
     left: 50%;
     top: 50%;
   }
@@ -1475,8 +1475,8 @@ function renderLayout() {
     // 5p: left (shifted down), top-left corner, top-right corner, right (shifted down)
     5: [
       { top: '65%', left: '0', transform: 'translateY(-50%)' },
-      { top: '0',   left: '0' },
-      { top: '0',   right: '0', left: 'auto' },
+      { top: '0',   left: '-25px' },
+      { top: '0',   right: '-25px', left: 'auto' },
       { top: '65%', right: '0', left: 'auto', transform: 'translateY(-50%)' }
     ],
     // 6p: left-upper, left-lower, top, right-upper, right-lower
@@ -1645,21 +1645,24 @@ function renderOpponentCards() {
 
     } else if (isCorner) {
       const isLeft2 = seat === 'corner-tl';
-      const angStep2 = 10;
+      const angStep2 = Math.max(1, 10 - Math.floor((G.round - 1) / 2));
       const totalSpread2 = angStep2 * (n - 1);
-      const centerAngle = isLeft2 ? 45 : 135;
+      const centerAngle = isLeft2 ? 40 : 142.5;
       const startAngle = centerAngle - totalSpread2 / 2;
       const BASE_R = 20, R = BASE_R + n * 10;
+      // Ellipse: stretch vertically so the fan bows downward more
+      const rx = R;
+      const ry = R * 1.65;
       const cardDiag = Math.round(Math.sqrt(CW * CW + CH * CH));
-      const containerSize = R + cardDiag + 8;
+      const containerSize = Math.max(rx, ry) + cardDiag + 8;
       el.style.cssText = `position:relative; overflow:visible; width:${containerSize}px; height:${containerSize}px;`;
       p.hand.forEach((card, idx) => {
         const dirAngle = startAngle + idx * angStep2;
         const dirRad = dirAngle * Math.PI / 180;
         const cardAngle = dirAngle + (isLeft2 ? 90 : -90);
         const originX = isLeft2 ? 0 : containerSize;
-        const cx = originX + R * Math.cos(dirRad) - CW / 2;
-        const cy = R * Math.sin(dirRad) - CH / 2;
+        const cx = originX + rx * Math.cos(dirRad) - CW / 2;
+        const cy = ry * Math.sin(dirRad) - CH / 2;
         const div = createMiniCardElement(card, !revealed);
         div.style.cssText = `position:absolute; width:${CW}px; height:${CH}px; left:${cx}px; top:${cy}px; z-index:${idx + 1}; transform-origin:center center; transform:rotate(${cardAngle}deg);`;
         el.appendChild(div);
@@ -1682,9 +1685,9 @@ function renderOpponentCards() {
       } else if (seat === 'right') {
         nameEl.style.cssText = 'position:absolute; top:-20px; right:0; left:auto; white-space:nowrap;';
       } else if (seat === 'corner-tl') {
-        nameEl.style.cssText = 'position:absolute; top:4px; left:4px; white-space:nowrap; z-index:20;';
+        nameEl.style.cssText = 'position:absolute; top:4px; left:29px; white-space:nowrap; z-index:20;';
       } else if (seat === 'corner-tr') {
-        nameEl.style.cssText = 'position:absolute; top:4px; right:4px; left:auto; white-space:nowrap; z-index:20;';
+        nameEl.style.cssText = 'position:absolute; top:4px; right:29px; left:auto; white-space:nowrap; z-index:20;';
       } else {
         // top: name below cards
         nameEl.style.cssText = 'position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%); white-space:nowrap;';

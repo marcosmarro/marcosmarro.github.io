@@ -1,6 +1,3 @@
-/* ========================
-   CSS CUSTOM PROPERTIES
-   ======================== */
 :root {
   --green: #2d7a3a;
   --green-light: #4caf60;
@@ -271,13 +268,11 @@ input:focus { border-color: var(--gold); }
   overflow: visible;
 }
 
-/* Card container — sized by JS */
 .opponent-cards {
   position: relative;
   flex-shrink: 0;
 }
 
-/* Name label: absolutely positioned INWARD from the card strip */
 .opponent-name {
   position: absolute;
   font-family: 'Cinzel', serif;
@@ -308,7 +303,7 @@ input:focus { border-color: var(--gold); }
   flex-direction: column;
   align-items: center;
   gap: 0;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, calc(-50% + 25px));
   left: 50%;
   top: 50%;
 }
@@ -342,12 +337,7 @@ input:focus { border-color: var(--gold); }
   text-transform: uppercase;
 }
 
-/* ===================== CARDS =====================
- * Each card is ONE div.
- * Default (no class) = face-up: cream background, pips visible.
- * .face-down = face-down: green back, pips hidden.
- * ==================================================*/
-
+/* ===================== CARDS ===================== */
 .card {
   width: 58px; height: 84px;
   position: relative;
@@ -360,7 +350,6 @@ input:focus { border-color: var(--gold); }
 }
 .card.large { width: 50px; height: 70px; }
 
-/* Face-down state */
 .card.face-down {
   background: linear-gradient(135deg, #1a5a3a 0%, #0d2e1a 50%, #1a5a3a 100%);
   border-color: #2d7a3a;
@@ -374,10 +363,8 @@ input:focus { border-color: var(--gold); }
   font-size: 24px; color: rgba(200,148,10,0.4);
 }
 
-/* Wild card border */
 .card.face-down.wild-card { border-color: #2d7a3a; box-shadow: 0 3px 10px rgba(0,0,0,0.4); }
 
-/* Selected for discard */
 .card.selected-discard { outline: 3px solid var(--red-light); box-shadow: 0 0 16px rgba(231,76,60,0.6), 0 4px 12px rgba(0,0,0,0.4); z-index: 100 !important; }
 
 .card.dragging { opacity: 0.7; transform: scale(1.1) rotate(3deg); z-index: 1000; pointer-events: none; }
@@ -461,7 +448,8 @@ input:focus { border-color: var(--gold); }
 }
 #player-hand-wrapper,
 #player-hand,
-#player-hand .card {
+#player-hand .card,
+#sort-hand-btn {
   pointer-events: all;
 }
 
@@ -489,7 +477,6 @@ input:focus { border-color: var(--gold); }
   z-index: 100 !important;
 }
 
-/* wrapper centres the fanned hand */
 #player-hand-wrapper {
   display: flex;
   justify-content: center;
@@ -549,25 +536,46 @@ input:focus { border-color: var(--gold); }
   color: rgba(255,255,255,0.2);
   cursor: not-allowed;
   box-shadow: none;
+  border-color: transparent;
 }
+.action-btn-undo:not(:disabled):hover { background: rgba(255,255,255,0.2); }
 
 .action-btn-go-out {
-  background: linear-gradient(135deg, var(--green), var(--green-light));
+  background: linear-gradient(135deg, #2d7a3a, #4caf60);
   color: #fff;
 }
 .action-btn-go-out:disabled {
-  background: rgba(255,255,255,0.08);
-  color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.3);
   cursor: not-allowed;
   box-shadow: none;
 }
-.action-btn-go-out:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(76,175,96,0.5); }
+.action-btn-go-out:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(76,175,96,0.4); }
+
+/* ===== DRAWN CARD INDICATOR ===== */
+#drawn-card-area {
+  position: absolute;
+  bottom: 90px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 20;
+}
+#drawn-card-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: 'Cinzel', serif;
+}
 
 /* ===== ANIMATIONS ===== */
 @keyframes dealCard {
   from {
     opacity: 0;
-    transform: translate(-40px, -20px) scale(0.8) rotate(-5deg);
+    transform: translate(var(--deal-from-x), var(--deal-from-y)) scale(0.3) rotate(var(--deal-rotation));
   }
   to {
     opacity: 1;
@@ -776,7 +784,7 @@ input:focus { border-color: var(--gold); }
   border-radius: 7px;
 }
 
-/* ===== INLINE SCORES TABLE (below piles) ===== */
+/* ===== INLINE SCORES TABLE ===== */
 #scores-panel { display: none; }
 
 #center-scores {
@@ -807,9 +815,7 @@ input:focus { border-color: var(--gold); }
 }
 .cscore-row:last-child { border-bottom: none; }
 .cscore-row.me { color: var(--gold); font-weight: 600; }
-.cscore-row.active-score .cscore-name::before {
-  content: '';
-}
+.cscore-row.active-score .cscore-name::before { content: ''; }
 .cscore-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 100px;

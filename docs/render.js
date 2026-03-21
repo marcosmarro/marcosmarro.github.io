@@ -1,96 +1,5 @@
 // ========================
-// CARD ELEMENT BUILDERS
-// ========================
-const JOKER_LETTER_CLASSES = ['jc-0','jc-1','jc-2','jc-3','jc-4'];
-const JOKER_LETTERS = ['J','O','K','E','R'];
-
-function buildPip(card, isLarge) {
-  const frag = document.createDocumentFragment();
-
-  function makePip(corner) {
-    const pip = document.createElement('div');
-    pip.className = 'cp ' + corner;
-
-    if (card.isJoker) {
-      const col = document.createElement('div');
-      col.className = 'cp-joker';
-      const fs = '9px';
-      JOKER_LETTERS.forEach((letter, i) => {
-        const span = document.createElement('span');
-        span.className = JOKER_LETTER_CLASSES[i];
-        span.style.fontSize = fs;
-        span.textContent = letter;
-        col.appendChild(span);
-      });
-      pip.appendChild(col);
-    } else {
-      const val = document.createElement('div');
-      val.className = 'cp-val';
-      val.style.fontSize = '13px';
-      val.textContent = card.val;
-
-      const suit = document.createElement('div');
-      suit.className = 'cp-suit';
-      suit.style.fontSize = '10px';
-      suit.textContent = SUIT_SYMBOLS[card.suit] || '';
-
-      pip.appendChild(val);
-      pip.appendChild(suit);
-    }
-    return pip;
-  }
-
-  frag.appendChild(makePip('tl'));
-  frag.appendChild(makePip('br'));
-  return frag;
-}
-
-function createCardElement(card, idx, faceDown = false) {
-  const el = document.createElement('div');
-  el.className = 'card ' + getSuitClass(card) + (isWild(card) ? ' wild-card' : '') + (faceDown ? ' face-down' : '');
-  if (!faceDown) el.appendChild(buildPip(card, true));
-  return el;
-}
-
-function createMiniCardElement(card, faceDown = false) {
-  const el = document.createElement('div');
-  el.className = 'opp-card-mini ' + getSuitClass(card) + (isWild(card) ? ' wild-card' : '') + (faceDown ? ' face-down' : '');
-  if (!faceDown) el.appendChild(buildPip(card, false));
-  return el;
-}
-
-function getSuitClass(card) {
-  if (card.isJoker) return 'suit-joker';
-  if (isWild(card)) return 'suit-wild';
-  return 'suit-' + card.suit;
-}
-
-function getSuitSymbol(card) {
-  if (card.isJoker) return '';
-  return SUIT_SYMBOLS[card.suit] || card.suit;
-}
-
-function flipCard(el, faceDown, animate = true) {
-  el.classList.toggle('face-down', faceDown);
-}
-
-function flipRevealCards(containerEl, delayMs = 0) {
-  if (!containerEl) return;
-  containerEl.querySelectorAll('.opp-card-mini, .card').forEach((card, idx) => {
-    setTimeout(() => card.classList.remove('face-down'), delayMs + idx * 80);
-  });
-}
-
-function flipRevealPlayerHand(delayMs = 0) {
-  const hand = document.getElementById('player-hand');
-  if (!hand) return;
-  hand.querySelectorAll('.card').forEach((card, idx) => {
-    setTimeout(() => card.classList.remove('face-down'), delayMs + idx * 80);
-  });
-}
-
-// ========================
-// RENDER MASTER
+// RENDER
 // ========================
 function renderGame() {
   renderLayout();
@@ -103,9 +12,6 @@ function renderGame() {
   updateScoresPanel();
 }
 
-// ========================
-// LAYOUT
-// ========================
 function renderLayout() {
   const n = G.players.length;
   const opponents = G.players.filter(p => !p.isLocalPlayer);
@@ -127,8 +33,8 @@ function renderLayout() {
     ],
     5: [
       { top: '65%', left: '0', transform: 'translateY(-50%)' },
-      { top: '0',   left: '0' },
-      { top: '0',   right: '0', left: 'auto' },
+      { top: '0',   left: '-25px' },
+      { top: '0',   right: '-25px', left: 'auto' },
       { top: '65%', right: '0', left: 'auto', transform: 'translateY(-50%)' }
     ],
     6: [
@@ -189,9 +95,6 @@ function renderLayout() {
   });
 }
 
-// ========================
-// OPPONENT CARDS
-// ========================
 function renderOpponentCards() {
   G.players.forEach(p => {
     if (p.isLocalPlayer) return;
@@ -214,10 +117,6 @@ function renderOpponentCards() {
     const CROP = 0.20;
     const isSide = seat === 'left' || seat === 'right';
     const isCorner = seat === 'corner-tl' || seat === 'corner-tr';
-
-    const maxSpread = Math.min(6, n * 0.7);
-    const aStep  = n > 1 ? maxSpread / (n - 1) : 0;
-    const aStart = -maxSpread / 2;
 
     if (seat === 'top') {
       const availW = Math.min(window.innerWidth * 0.44, 240);
@@ -252,38 +151,59 @@ function renderOpponentCards() {
       const sideMaxSpread = 2 * (n - 1);
       const sideAngleStep = n > 1 ? sideMaxSpread / (n - 1) : 0;
       const sideStartAngle = n > 1 ? -sideMaxSpread / 2 : 0;
+      const ARC_R = 500;
+      const centerIdx = (n - 1) / 2;
 
       p.hand.forEach((card, idx) => {
-        const θDeg = isLeft
-          ? (90 + sideStartAngle + idx * sideAngleStep)
-          : -(90 + sideStartAngle + idx * sideAngleStep);
+        const fanAngle = sideStartAngle + idx * sideAngleStep;
         const div = createMiniCardElement(card, !revealed);
-        const offEdge = Math.round(SIDE_CH * CROP);
-        const leftPos = isLeft ? -offEdge : 0;
-        div.style.cssText = `position:absolute; width:${SIDE_CH}px; height:${SIDE_CW}px; left:${leftPos}px; top:${idx * step}px; z-index:${n - idx}; transform-origin:center center; transform:rotate(${θDeg}deg);`;
+        const directedFan = isLeft ? fanAngle : -fanAngle;
+        const baseAngle = isLeft ? 90 : -90;
+        const centerFromWall = visibleW - SIDE_CH / 2;
+        const distFromCenter = idx - centerIdx;
+        const θRad = (distFromCenter * sideAngleStep) * Math.PI / 180;
+        const arcInset = ARC_R - ARC_R * Math.cos(θRad);
+        const adjustedCenter = centerFromWall - arcInset;
+        const left = isLeft
+          ? adjustedCenter - SIDE_CW / 2
+          : visibleW - adjustedCenter - SIDE_CW / 2;
+        const cardCenterY = idx * step + SIDE_CW / 2;
+        const top  = cardCenterY - SIDE_CH / 2;
+        const zIndex = isLeft ? (idx + 1) : (n - idx);
+        div.style.cssText = `position:absolute; width:${SIDE_CW}px; height:${SIDE_CH}px; left:${left}px; top:${top}px; z-index:${zIndex}; transform-origin:center center; transform:rotate(${baseAngle + directedFan}deg);`;
         el.appendChild(div);
       });
 
     } else if (isCorner) {
-      const isTL = seat === 'corner-tl';
-      const CORNER_W = 70, CORNER_H = 100;
-      const maxAngle = Math.min(50, n * 8);
-      const angleStep = n > 1 ? maxAngle / (n - 1) : 0;
-      const startAngle = isTL ? (90 + maxAngle / 2) : -(90 + maxAngle / 2);
-      const angleDir = isTL ? -1 : 1;
-      const OFFSET = 24;
-      const totalSize = OFFSET * (n - 1) + CORNER_W;
-      el.style.cssText = `position:relative; overflow:visible; width:${totalSize}px; height:${totalSize}px;`;
-
+      const isLeft2 = seat === 'corner-tl';
+      const angStep2 = Math.max(1, 10 - Math.floor((G.round - 1) / 2));
+      const totalSpread2 = angStep2 * (n - 1);
+      const centerAngle = isLeft2 ? 40 : 145;
+      const startAngle = centerAngle - totalSpread2 / 2;
+      const BASE_R = 20, R = BASE_R + n * 10;
+      const rx = R;
+      const ry = R * 1.65;
+      const cardDiag = Math.round(Math.sqrt(CW * CW + CH * CH));
+      const containerSize = Math.max(rx, ry) + cardDiag + 8;
+      el.style.cssText = `position:relative; overflow:visible; width:${containerSize}px; height:${containerSize}px;`;
       p.hand.forEach((card, idx) => {
-        const θDeg = startAngle + angleDir * idx * angleStep;
+        const dirAngle = startAngle + idx * angStep2;
+        const dirRad = dirAngle * Math.PI / 180;
+        const cardAngle = dirAngle + (isLeft2 ? 90 : -90);
+        const originX = isLeft2 ? 0 : containerSize;
+        const cx = originX + rx * Math.cos(dirRad) - CW / 2;
+        const cy = ry * Math.sin(dirRad) - CH / 2;
         const div = createMiniCardElement(card, !revealed);
-        div.style.cssText = `position:absolute; width:${CORNER_W}px; height:${CORNER_H}px; left:${idx * OFFSET}px; top:${idx * OFFSET}px; z-index:${n - idx}; transform-origin:bottom center; transform:rotate(${θDeg}deg);`;
+        div.style.cssText = `position:absolute; width:${CW}px; height:${CH}px; left:${cx}px; top:${cy}px; z-index:${idx + 1}; transform-origin:center center; transform:rotate(${cardAngle}deg);`;
         el.appendChild(div);
       });
     }
 
-    // Position the name label
+    if (revealed && !wasRevealed) {
+      const container = document.getElementById('opp-cards-' + p.id);
+      setTimeout(() => flipRevealCards(container), 50);
+    }
+
     const nameEl = document.getElementById('opp-name-' + p.id);
     if (nameEl) {
       if (seat === 'left') {
@@ -291,9 +211,9 @@ function renderOpponentCards() {
       } else if (seat === 'right') {
         nameEl.style.cssText = 'position:absolute; top:-20px; right:0; left:auto; white-space:nowrap;';
       } else if (seat === 'corner-tl') {
-        nameEl.style.cssText = 'position:absolute; top:4px; left:4px; white-space:nowrap; z-index:20;';
+        nameEl.style.cssText = 'position:absolute; top:4px; left:29px; white-space:nowrap; z-index:20;';
       } else if (seat === 'corner-tr') {
-        nameEl.style.cssText = 'position:absolute; top:4px; right:4px; left:auto; white-space:nowrap; z-index:20;';
+        nameEl.style.cssText = 'position:absolute; top:4px; right:29px; left:auto; white-space:nowrap; z-index:20;';
       } else {
         nameEl.style.cssText = 'position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%); white-space:nowrap;';
       }
@@ -301,9 +221,6 @@ function renderOpponentCards() {
   });
 }
 
-// ========================
-// PLAYER HAND
-// ========================
 function updatePlayerLabel() {
   const el = document.getElementById('player-label');
   if (!el) return;
@@ -378,9 +295,6 @@ function renderPlayerHand() {
       div.addEventListener('click', () => {
         if (isMyTurn() && G.drawnCard !== null) {
           tapCardToDiscard(idx);
-        } else {
-          card.faceDown = !card.faceDown;
-          renderPlayerHand();
         }
       });
       div.addEventListener('mousedown', startDrag);
@@ -397,12 +311,102 @@ function renderPlayerHand() {
 }
 
 // ========================
+// CARD ELEMENT BUILDERS
+// ========================
+const JOKER_LETTER_CLASSES = ['jc-0','jc-1','jc-2','jc-3','jc-4'];
+const JOKER_LETTERS = ['J','O','K','E','R'];
+
+function buildPip(card, isLarge) {
+  const frag = document.createDocumentFragment();
+
+  function makePip(corner) {
+    const pip = document.createElement('div');
+    pip.className = 'cp ' + corner;
+
+    if (card.isJoker) {
+      const col = document.createElement('div');
+      col.className = 'cp-joker';
+      const fs = '9px';
+      JOKER_LETTERS.forEach((letter, i) => {
+        const span = document.createElement('span');
+        span.className = JOKER_LETTER_CLASSES[i];
+        span.style.fontSize = fs;
+        span.textContent = letter;
+        col.appendChild(span);
+      });
+      pip.appendChild(col);
+    } else {
+      const val = document.createElement('div');
+      val.className = 'cp-val';
+      val.style.fontSize = '13px';
+      val.textContent = card.val;
+
+      const suit = document.createElement('div');
+      suit.className = 'cp-suit';
+      suit.style.fontSize = '10px';
+      suit.textContent = SUIT_SYMBOLS[card.suit] || '';
+
+      pip.appendChild(val);
+      pip.appendChild(suit);
+    }
+    return pip;
+  }
+
+  frag.appendChild(makePip('tl'));
+  frag.appendChild(makePip('br'));
+  return frag;
+}
+
+function createCardElement(card, idx, faceDown = false) {
+  const el = document.createElement('div');
+  el.className = 'card ' + getSuitClass(card) + (isWild(card) ? ' wild-card' : '') + (faceDown ? ' face-down' : '');
+  if (!faceDown) el.appendChild(buildPip(card, true));
+  return el;
+}
+
+function createMiniCardElement(card, faceDown = false) {
+  const el = document.createElement('div');
+  el.className = 'opp-card-mini ' + getSuitClass(card) + (isWild(card) ? ' wild-card' : '') + (faceDown ? ' face-down' : '');
+  if (!faceDown) el.appendChild(buildPip(card, false));
+  return el;
+}
+
+function flipCard(el, faceDown) {
+  el.classList.toggle('face-down', faceDown);
+}
+
+function flipRevealCards(containerEl, delayMs = 0) {
+  if (!containerEl) return;
+  containerEl.querySelectorAll('.opp-card-mini, .card').forEach((card, idx) => {
+    setTimeout(() => card.classList.remove('face-down'), delayMs + idx * 80);
+  });
+}
+
+function flipRevealPlayerHand(delayMs = 0) {
+  const hand = document.getElementById('player-hand');
+  if (!hand) return;
+  hand.querySelectorAll('.card').forEach((card, idx) => {
+    setTimeout(() => card.classList.remove('face-down'), delayMs + idx * 80);
+  });
+}
+
+function getSuitClass(card) {
+  if (card.isJoker) return 'suit-joker';
+  if (isWild(card)) return 'suit-wild';
+  return 'suit-' + card.suit;
+}
+
+function getSuitSymbol(card) {
+  if (card.isJoker) return '';
+  return SUIT_SYMBOLS[card.suit] || card.suit;
+}
+
+// ========================
 // PILES
 // ========================
 function renderPiles() {
   const discardDisplay = document.getElementById('discard-pile-display');
   const hasPreview = !!document.getElementById('discard-preview-card');
-
   discardDisplay.innerHTML = '';
 
   const topDiscard = G.discardPile[G.discardPile.length - 1];
@@ -442,7 +446,7 @@ function renderPiles() {
 }
 
 // ========================
-// TOP BAR / SCORES
+// TOP BAR / SCORES / ACTIONS
 // ========================
 function updateTopBar() {
   const currentPlayer = G.players[G.currentTurn];
@@ -452,9 +456,6 @@ function updateTopBar() {
       ? (isMyTurn() ? '⭐ Your Turn' : `${currentPlayer.name}'s Turn`)
       : '';
   }
-  const wv = wildValue();
-  // wildName used for future display extension if needed
-  const wildName = wv === 'K' ? 'Kings' : wv === 'Q' ? 'Queens' : wv === 'J' ? 'Jacks' : wv + 's';
 }
 
 function updateActionButtons() {
@@ -464,7 +465,6 @@ function updateActionButtons() {
   const myTurn = isMyTurn();
   const hasDrawn = G.drawnCard !== null;
   const hasSelected = G.selectedCardIdx >= 0;
-  const someoneElseWentOut = G.players.some(p => p.wentOut && !p.isLocalPlayer);
 
   const continueBtn = document.getElementById('continue-btn');
   continueBtn.disabled = !(myTurn && hasDrawn && hasSelected);
@@ -473,6 +473,7 @@ function updateActionButtons() {
   undoBtn.disabled = !(myTurn && hasSelected);
 
   const goOutBtn = document.getElementById('go-out-btn');
+  const someoneElseWentOut = G.players.some(p => p.wentOut && !p.isLocalPlayer);
   let canGoOut = false;
   if (myTurn && hasDrawn && hasSelected && !someoneElseWentOut) {
     const remaining = localPlayer.hand.filter((_, i) => i !== G.selectedCardIdx);
@@ -504,7 +505,7 @@ function updateScoresPanel() {
 }
 
 // ========================
-// DEALING ANIMATION
+// DEAL ANIMATION
 // ========================
 function dealCardsAnimated(count, callback) {
   const dealScreen = document.getElementById('dealing-screen');
@@ -553,7 +554,6 @@ function dealCardsAnimated(count, callback) {
       box-shadow: 0 6px 20px rgba(0,0,0,0.55);
     `;
     document.body.appendChild(flying);
-
     flying.getBoundingClientRect();
 
     const dx = target.x - origin.x;
@@ -566,7 +566,6 @@ function dealCardsAnimated(count, callback) {
     setTimeout(() => {
       document.body.removeChild(flying);
       G.players[targetPlayerIdx].hand.push(cardData);
-
       if (G.players[targetPlayerIdx].isLocalPlayer) {
         renderPlayerHand();
       } else {
@@ -596,7 +595,6 @@ function dealCardsAnimated(count, callback) {
 
     playerIdx = (playerIdx + 1) % G.players.length;
     dealIdx++;
-
     setTimeout(dealNext, delayBetween);
   }
 
@@ -604,7 +602,7 @@ function dealCardsAnimated(count, callback) {
 }
 
 // ========================
-// CARD DRAW ANIMATION
+// CARD DRAW / FLY ANIMATIONS
 // ========================
 function animateCardDraw(fromEl, toEl, faceUp, cardData, callback) {
   const fromRect = fromEl.getBoundingClientRect();
@@ -644,8 +642,119 @@ function animateCardDraw(fromEl, toEl, faceUp, cardData, callback) {
   }, 500);
 }
 
+function flyCardToDiscardPreview(cardIdx) {
+  const localPlayer = G.players[G.localPlayerIdx];
+  const card = localPlayer.hand[cardIdx];
+  if (!card) return;
+
+  const hand = document.getElementById('player-hand');
+  const cardEls = hand.querySelectorAll('.card');
+  const cardEl = cardEls[cardIdx];
+  const discardTarget = document.getElementById('discard-drop-target');
+  if (!cardEl || !discardTarget) return;
+
+  const fromRect = cardEl.getBoundingClientRect();
+  const toRect   = discardTarget.getBoundingClientRect();
+
+  const flyCard = cardEl.cloneNode(true);
+  flyCard.style.cssText = `
+    position:fixed;
+    width:${fromRect.width}px; height:${fromRect.height}px;
+    left:${fromRect.left}px; top:${fromRect.top}px;
+    z-index:9998; pointer-events:none;
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+    transition: left 0.3s cubic-bezier(0.4,0,0.2,1),
+                top 0.3s cubic-bezier(0.4,0,0.2,1),
+                transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  `;
+  document.body.appendChild(flyCard);
+
+  cardEl.style.opacity = '0';
+  G.selectedCardIdx = cardIdx;
+  updateActionButtons();
+  updatePlayerLabel();
+
+  flyCard.getBoundingClientRect();
+
+  const destLeft = toRect.left + (toRect.width  - fromRect.width)  / 2;
+  const destTop  = toRect.top  + (toRect.height - fromRect.height) / 2;
+  flyCard.style.left      = destLeft + 'px';
+  flyCard.style.top       = destTop  + 'px';
+  flyCard.style.transform = 'rotate(3deg) scale(1)';
+
+  setTimeout(() => {
+    document.body.removeChild(flyCard);
+    clearDiscardPreview();
+    const preview = createCardElement(card, -1);
+    preview.id = 'discard-preview-card';
+    preview.className += ' large';
+    preview.style.cssText = `
+      position:absolute; top:0; left:0;
+      transform: rotate(3deg);
+      outline: 3px solid var(--gold);
+      box-shadow: 0 0 18px rgba(200,148,10,0.7), 0 4px 16px rgba(0,0,0,0.5);
+      z-index: 10;
+    `;
+    document.getElementById('discard-pile-display').appendChild(preview);
+
+    if (G.phase === 'lastTurns' && !G.revealedSet.has('local_hand')) {
+      G.revealedSet.add('local_hand');
+      G.players[G.localPlayerIdx].hand.forEach(c => c.faceDown = false);
+      renderPlayerHand();
+      flipRevealPlayerHand(50);
+    }
+  }, 310);
+}
+
+function flyCardBackToHand(cardIdx, callback) {
+  clearDiscardPreview();
+
+  const hand = document.getElementById('player-hand');
+  const cardEls = hand.querySelectorAll('.card');
+  const cardEl = cardEls[cardIdx];
+  const discardTarget = document.getElementById('discard-drop-target');
+  if (!cardEl || !discardTarget) { if (callback) callback(); return; }
+
+  const toRect   = cardEl.getBoundingClientRect();
+  const fromRect = discardTarget.getBoundingClientRect();
+
+  const localPlayer = G.players[G.localPlayerIdx];
+  const card = localPlayer.hand[cardIdx];
+
+  const flyCard = createCardElement(card, -1);
+  flyCard.className += ' large';
+  flyCard.style.cssText = `
+    position:fixed;
+    width:50px; height:70px;
+    left:${fromRect.left + (fromRect.width - 50) / 2}px;
+    top:${fromRect.top  + (fromRect.height - 70) / 2}px;
+    z-index:9998; pointer-events:none;
+    transform: rotate(3deg) scale(1);
+    opacity: 1;
+    transition: left 0.3s cubic-bezier(0.4,0,0.2,1),
+                top 0.3s cubic-bezier(0.4,0,0.2,1),
+                transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  `;
+  document.body.appendChild(flyCard);
+
+  flyCard.getBoundingClientRect();
+
+  flyCard.style.left      = toRect.left + 'px';
+  flyCard.style.top       = toRect.top  + 'px';
+  flyCard.style.transform = 'rotate(0deg) scale(1)';
+
+  setTimeout(() => {
+    document.body.removeChild(flyCard);
+    if (cardEl) cardEl.style.opacity = '';
+    if (callback) callback();
+  }, 310);
+}
+
 // ========================
-// DRAG & DROP — Reorder hand
+// DRAG & DROP
 // ========================
 let dragState = null;
 
@@ -833,4 +942,27 @@ function onDragEnd(e) {
   } else {
     renderPlayerHand();
   }
+}
+
+// ========================
+// TOAST
+// ========================
+let toastTimeout = null;
+function showToast(msg, duration = 2000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// ========================
+// WENT OUT NOTIFICATION
+// ========================
+function showWentOut(name) {
+  const overlay = document.getElementById('went-out-overlay');
+  const banner = document.getElementById('went-out-banner');
+  banner.innerHTML = `${name}<br><span style="font-size:16px;opacity:0.7">went out! Last turns...</span>`;
+  overlay.classList.add('show');
+  setTimeout(() => overlay.classList.remove('show'), 2500);
 }

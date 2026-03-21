@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="5 Crowns">
-  <title>5 Crowns</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="5 Crowns">
+<title>5 Crowns</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -93,13 +93,9 @@
   <!-- GAME SCREEN -->
   <div id="game-screen" class="screen hidden">
     <div id="game-layout">
-      <!-- Opponent areas (filled dynamically) -->
       <div id="opponent-areas-container"></div>
 
-      <!-- Center piles + turn label + scores -->
       <div id="center-area">
-
-        <!-- Whose turn label sits above both piles -->
         <div id="center-turn-label" style="
           position:absolute; top:-28px; left:50%; transform:translateX(-50%);
           font-family:'Cinzel',serif; font-size:12px; letter-spacing:1px;
@@ -122,7 +118,6 @@
           </div>
         </div>
 
-        <!-- Action buttons -->
         <div id="action-area">
           <div id="action-row-top" style="display:flex;gap:4px;width:100%;margin-bottom:6px">
             <button class="action-btn action-btn-continue" id="continue-btn" onclick="confirmDiscard()" disabled style="flex:2">Continue</button>
@@ -133,7 +128,6 @@
           </div>
         </div>
 
-        <!-- Scores table -->
         <div id="center-scores">
           <div id="center-scores-rows"></div>
         </div>
@@ -153,13 +147,30 @@
           padding-bottom:4px;
           pointer-events:none;
         "></div>
+        <button id="sort-hand-btn" onclick="sortPlayerHand()" style="
+          position:absolute;
+          bottom:100%;
+          left:10px;
+          margin-bottom:1px;
+          font-family:'Cinzel',serif;
+          font-size:10px;
+          font-weight:600;
+          letter-spacing:1px;
+          padding:3px 9px;
+          background:rgba(0,0,0,0.35);
+          border:1px solid rgba(255,255,255,0.2);
+          border-radius:5px;
+          color:rgba(255,255,255,0.65);
+          cursor:pointer;
+          z-index:10;
+          text-transform:uppercase;
+        ">Sort</button>
         <div id="player-hand-wrapper">
           <div id="player-hand"></div>
         </div>
       </div>
     </div>
 
-    <!-- Dealing overlay -->
     <div id="dealing-screen">
       <div id="dealing-status">Dealing cards...</div>
     </div>
@@ -190,15 +201,11 @@
   <div id="went-out-banner"></div>
 </div>
 
-<!-- Scripts: game logic first, then rendering -->
 <script src="game.js"></script>
 <script src="render.js"></script>
 <script>
-  // ========================
-  // INIT
-  // ========================
+  // Init
   showScreen('home-screen');
-
   document.getElementById('draw-pile-visual').addEventListener('click', () => {
     if (isMyTurn() && G.drawnCard === null && (G.phase === 'draw' || G.phase === 'lastTurns') && !G.dealing) {
       drawFromDeck();

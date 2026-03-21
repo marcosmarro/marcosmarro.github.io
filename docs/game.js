@@ -9,17 +9,17 @@ let G = {
   currentTurn: 0,   // player index
   startingPlayer: 0, // who goes first this round (rotates CW each round)
   phase: 'draw',    // draw | discard | lastTurns
-  lastTurnPlayer: -1, // who went out
-  lastTurnCount: 0,   // how many final turns taken
+  lastTurnPlayer: -1,
+  lastTurnCount: 0,
   localPlayerIdx: 0,
-  drawnCard: null,   // card drawn this turn, waiting for discard
+  drawnCard: null,
   drawnFromDiscard: false,
-  selectedCardIdx: -1, // index of card tapped to discard (-1 = none)
+  selectedCardIdx: -1,
   botGame: true,
   gameOver: false,
   dealing: false,
   discardDropHighlight: false,
-  revealedSet: new Set(), // player ids already flip-animated this round
+  revealedSet: new Set(),
 };
 
 // ========================
@@ -65,8 +65,6 @@ function shuffle(arr) {
 }
 
 function wildValue() {
-  // Round 1=3 cards dealt, Round 9=11 cards, Round 10=12 cards, Round 11=13 cards
-  // Wild card matches the number of cards dealt that round.
   const cardsDealt = G.round + 2;
   if (cardsDealt === 11) return 'J';
   if (cardsDealt === 12) return 'Q';
@@ -79,6 +77,10 @@ function isWild(card) {
   return card.val === wildValue();
 }
 
+function isMyTurn() {
+  return G.players[G.currentTurn]?.isLocalPlayer === true;
+}
+
 // ========================
 // SCREEN MANAGEMENT
 // ========================
@@ -89,7 +91,7 @@ function showScreen(id) {
 }
 
 // ========================
-// LOBBY (Simulated with localStorage)
+// LOBBY
 // ========================
 let lobbyCode = '';
 let lobbyPollInterval = null;
@@ -222,7 +224,7 @@ function startMultiplayerGame(data, myIdx) {
 }
 
 // ========================
-// BOT GAME SETUP
+// BOT GAME
 // ========================
 function startBotGame() {
   const name = document.getElementById('bot-player-name').value.trim() || 'Player';
@@ -276,178 +278,6 @@ function startRound() {
       setTimeout(doBotTurn, 1200);
     }
   });
-}
-
-// ========================
-// HAND VALIDATION
-// ========================
-function isValidHand(cards) {
-  if (cards.length === 0) return true;
-  return canArrangeCards(cards);
-}
-
-function canArrangeCards(cards) {
-  if (cards.length === 0) return true;
-  if (cards.length < 3) return false;
-  return tryGroups(cards, 0);
-}
-
-function tryGroups(remaining, depth) {
-  if (remaining.length === 0) return true;
-  if (remaining.length < 3) return false;
-  if (depth > 10) return false;
-
-  const n = remaining.length;
-  for (let size = 3; size <= n; size++) {
-    const combos = getCombinations(remaining, size);
-    for (const combo of combos) {
-      if (isBook(combo) || isRun(combo)) {
-        const rest = remaining.filter(c => !combo.includes(c));
-        if (tryGroups(rest, depth + 1)) return true;
-      }
-    }
-  }
-  return false;
-}
-
-function getCombinations(arr, k) {
-  if (k === arr.length) return [arr];
-  if (k === 1) return arr.map(x => [x]);
-  const result = [];
-  for (let i = 0; i <= arr.length - k; i++) {
-    const rest = getCombinations(arr.slice(i + 1), k - 1);
-    for (const combo of rest) result.push([arr[i], ...combo]);
-  }
-  return result;
-}
-
-function isBook(cards) {
-  const normals = cards.filter(c => !isWild(c));
-  if (normals.length === 0) return true;
-  const val = normals[0].val;
-  return normals.every(c => c.val === val);
-}
-
-function isRun(cards) {
-  const normals = cards.filter(c => !isWild(c));
-  if (normals.length === 0) return true;
-
-  const suit = normals[0].suit;
-  if (!normals.every(c => c.suit === suit)) return false;
-
-  const ranks = normals.map(c => cardNumericRank(c.val)).sort((a, b) => a - b);
-  const wildCount = cards.length - normals.length;
-  const span = ranks[ranks.length - 1] - ranks[0] + 1;
-  if (span > cards.length) return false;
-
-  let gaps = 0;
-  for (let i = 1; i < ranks.length; i++) {
-    const diff = ranks[i] - ranks[i - 1];
-    if (diff === 0) return false;
-    gaps += diff - 1;
-  }
-  return gaps <= wildCount;
-}
-
-// ========================
-// SCORING
-// ========================
-function scoreHand(hand) {
-  let minScore = Infinity;
-
-  function tryScore(remaining) {
-    const baseScore = remaining.reduce((sum, c) => {
-      if (isWild(c)) return sum + 20;
-      if (c.isJoker) return sum + 50;
-      return sum + cardValue(c.val);
-    }, 0);
-    minScore = Math.min(minScore, baseScore);
-    if (minScore === 0) return;
-
-    for (let size = 3; size <= remaining.length; size++) {
-      const combos = getCombinations(remaining, size);
-      for (const combo of combos) {
-        if (isBook(combo) || isRun(combo)) {
-          const rest = remaining.filter(c => !combo.includes(c));
-          tryScore(rest);
-          if (minScore === 0) return;
-        }
-      }
-    }
-  }
-
-  tryScore(hand);
-  return minScore === Infinity ? 0 : minScore;
-}
-
-// ========================
-// TURN ADVANCEMENT
-// ========================
-function isMyTurn() {
-  return G.players[G.currentTurn]?.isLocalPlayer === true;
-}
-
-function advanceTurn() {
-  if (G.phase === 'lastTurns') {
-    advanceTurnAfterGoOut();
-    return;
-  }
-
-  G.currentTurn = (G.currentTurn + 1) % G.players.length;
-  G.drawnCard = null;
-
-  if (G.players[G.currentTurn].isBot) {
-    renderGame();
-    setTimeout(doBotTurn, 800 + Math.random() * 600);
-  } else {
-    renderGame();
-  }
-}
-
-function advanceTurnAfterGoOut() {
-  G.players[G.currentTurn].finishedLastTurn = true;
-  G.players[G.currentTurn].hand.forEach(c => c.faceDown = false);
-  renderGame();
-  G.lastTurnCount++;
-
-  const othersCount = G.players.length - 1;
-  if (G.lastTurnCount >= othersCount) {
-    endRound();
-    return;
-  }
-
-  do {
-    G.currentTurn = (G.currentTurn + 1) % G.players.length;
-  } while (G.players[G.currentTurn].wentOut);
-
-  G.drawnCard = null;
-
-  if (G.players[G.currentTurn].isBot) {
-    renderGame();
-    setTimeout(doBotTurn, 600 + Math.random() * 400);
-  } else {
-    renderGame();
-    showToast('Final turn! Draw then discard.');
-  }
-}
-
-function beginLastTurns() {
-  const othersCount = G.players.length - 1;
-  if (othersCount === 0) { endRound(); return; }
-
-  do {
-    G.currentTurn = (G.currentTurn + 1) % G.players.length;
-  } while (G.players[G.currentTurn].wentOut);
-
-  G.drawnCard = null;
-
-  if (G.players[G.currentTurn].isBot) {
-    renderGame();
-    setTimeout(doBotTurn, 600 + Math.random() * 400);
-  } else {
-    renderGame();
-    showToast('Final turn! Draw then discard.');
-  }
 }
 
 // ========================
@@ -529,117 +359,6 @@ function tapCardToDiscard(cardIdx) {
   flyCardToDiscardPreview(cardIdx);
 }
 
-function flyCardToDiscardPreview(cardIdx) {
-  const localPlayer = G.players[G.localPlayerIdx];
-  const card = localPlayer.hand[cardIdx];
-  if (!card) return;
-
-  const hand = document.getElementById('player-hand');
-  const cardEls = hand.querySelectorAll('.card');
-  const cardEl = cardEls[cardIdx];
-  const discardTarget = document.getElementById('discard-drop-target');
-  if (!cardEl || !discardTarget) return;
-
-  const fromRect = cardEl.getBoundingClientRect();
-  const toRect   = discardTarget.getBoundingClientRect();
-
-  const flyCard = cardEl.cloneNode(true);
-  flyCard.style.cssText = `
-    position:fixed;
-    width:${fromRect.width}px; height:${fromRect.height}px;
-    left:${fromRect.left}px; top:${fromRect.top}px;
-    z-index:9998; pointer-events:none;
-    transform: rotate(0deg) scale(1);
-    opacity: 1;
-    transition: left 0.3s cubic-bezier(0.4,0,0.2,1),
-                top 0.3s cubic-bezier(0.4,0,0.2,1),
-                transform 0.3s cubic-bezier(0.4,0,0.2,1);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  `;
-  document.body.appendChild(flyCard);
-
-  cardEl.style.opacity = '0';
-  G.selectedCardIdx = cardIdx;
-  updateActionButtons();
-  updatePlayerLabel();
-
-  flyCard.getBoundingClientRect();
-
-  const destLeft = toRect.left + (toRect.width  - fromRect.width)  / 2;
-  const destTop  = toRect.top  + (toRect.height - fromRect.height) / 2;
-  flyCard.style.left      = destLeft + 'px';
-  flyCard.style.top       = destTop  + 'px';
-  flyCard.style.transform = 'rotate(3deg) scale(1)';
-
-  setTimeout(() => {
-    document.body.removeChild(flyCard);
-    clearDiscardPreview();
-    const preview = createCardElement(card, -1);
-    preview.id = 'discard-preview-card';
-    preview.className += ' large';
-    preview.style.cssText = `
-      position:absolute; top:0; left:0;
-      transform: rotate(3deg);
-      outline: 3px solid var(--gold);
-      box-shadow: 0 0 18px rgba(200,148,10,0.7), 0 4px 16px rgba(0,0,0,0.5);
-      z-index: 10;
-    `;
-    document.getElementById('discard-drop-target').appendChild(preview);
-
-    if (G.phase === 'lastTurns' && !G.revealedSet.has('local_hand')) {
-      G.revealedSet.add('local_hand');
-      G.players[G.localPlayerIdx].hand.forEach(c => c.faceDown = false);
-      renderPlayerHand();
-      flipRevealPlayerHand(50);
-    }
-  }, 310);
-}
-
-function flyCardBackToHand(cardIdx, callback) {
-  clearDiscardPreview();
-
-  const hand = document.getElementById('player-hand');
-  const cardEls = hand.querySelectorAll('.card');
-  const cardEl = cardEls[cardIdx];
-  const discardTarget = document.getElementById('discard-drop-target');
-  if (!cardEl || !discardTarget) { if (callback) callback(); return; }
-
-  const toRect   = cardEl.getBoundingClientRect();
-  const fromRect = discardTarget.getBoundingClientRect();
-
-  const localPlayer = G.players[G.localPlayerIdx];
-  const card = localPlayer.hand[cardIdx];
-
-  const flyCard = createCardElement(card, -1);
-  flyCard.className += ' large';
-  flyCard.style.cssText = `
-    position:fixed;
-    width:50px; height:70px;
-    left:${fromRect.left + (fromRect.width - 50) / 2}px;
-    top:${fromRect.top  + (fromRect.height - 70) / 2}px;
-    z-index:9998; pointer-events:none;
-    transform: rotate(3deg) scale(1);
-    opacity: 1;
-    transition: left 0.3s cubic-bezier(0.4,0,0.2,1),
-                top 0.3s cubic-bezier(0.4,0,0.2,1),
-                transform 0.3s cubic-bezier(0.4,0,0.2,1);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  `;
-  document.body.appendChild(flyCard);
-
-  flyCard.getBoundingClientRect();
-
-  flyCard.style.left      = toRect.left + 'px';
-  flyCard.style.top       = toRect.top  + 'px';
-  flyCard.style.transform = 'rotate(0deg) scale(1)';
-
-  setTimeout(() => {
-    document.body.removeChild(flyCard);
-    if (cardEl) cardEl.style.opacity = '';
-    if (callback) callback();
-  }, 310);
-}
-
 function confirmDiscard() {
   if (!isMyTurn() || G.drawnCard === null || G.selectedCardIdx < 0) return;
   const localPlayer = G.players[G.localPlayerIdx];
@@ -719,6 +438,176 @@ function tryGoOut() {
   renderGame();
   flipRevealPlayerHand(300);
   setTimeout(beginLastTurns, 1500);
+}
+
+// ========================
+// HAND VALIDATION
+// ========================
+function isValidHand(cards) {
+  if (cards.length === 0) return true;
+  return canArrangeCards(cards);
+}
+
+function canArrangeCards(cards) {
+  if (cards.length === 0) return true;
+  if (cards.length < 3) return false;
+  return tryGroups(cards, 0);
+}
+
+function tryGroups(remaining, depth) {
+  if (remaining.length === 0) return true;
+  if (remaining.length < 3) return false;
+  if (depth > 10) return false;
+
+  const n = remaining.length;
+  for (let size = 3; size <= n; size++) {
+    const combos = getCombinations(remaining, size);
+    for (const combo of combos) {
+      if (isBook(combo) || isRun(combo)) {
+        const rest = remaining.filter(c => !combo.includes(c));
+        if (tryGroups(rest, depth + 1)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getCombinations(arr, k) {
+  if (k === arr.length) return [arr];
+  if (k === 1) return arr.map(x => [x]);
+  const result = [];
+  for (let i = 0; i <= arr.length - k; i++) {
+    const rest = getCombinations(arr.slice(i + 1), k - 1);
+    for (const combo of rest) result.push([arr[i], ...combo]);
+  }
+  return result;
+}
+
+function isBook(cards) {
+  const normals = cards.filter(c => !isWild(c));
+  if (normals.length === 0) return true;
+  const val = normals[0].val;
+  return normals.every(c => c.val === val);
+}
+
+function isRun(cards) {
+  const normals = cards.filter(c => !isWild(c));
+  if (normals.length === 0) return true;
+
+  const suit = normals[0].suit;
+  if (!normals.every(c => c.suit === suit)) return false;
+
+  const ranks = normals.map(c => cardNumericRank(c.val)).sort((a, b) => a - b);
+  const wildCount = cards.length - normals.length;
+
+  const span = ranks[ranks.length - 1] - ranks[0] + 1;
+  if (span > cards.length) return false;
+
+  let gaps = 0;
+  for (let i = 1; i < ranks.length; i++) {
+    const diff = ranks[i] - ranks[i - 1];
+    if (diff === 0) return false;
+    gaps += diff - 1;
+  }
+
+  return gaps <= wildCount;
+}
+
+// ========================
+// SCORING
+// ========================
+function scoreHand(hand) {
+  let minScore = Infinity;
+
+  function tryScore(remaining) {
+    const baseScore = remaining.reduce((sum, c) => {
+      if (isWild(c)) return sum + 20;
+      if (c.isJoker) return sum + 50;
+      return sum + cardValue(c.val);
+    }, 0);
+    minScore = Math.min(minScore, baseScore);
+    if (minScore === 0) return;
+
+    for (let size = 3; size <= remaining.length; size++) {
+      const combos = getCombinations(remaining, size);
+      for (const combo of combos) {
+        if (isBook(combo) || isRun(combo)) {
+          const rest = remaining.filter(c => !combo.includes(c));
+          tryScore(rest);
+          if (minScore === 0) return;
+        }
+      }
+    }
+  }
+
+  tryScore(hand);
+  return minScore === Infinity ? 0 : minScore;
+}
+
+// ========================
+// TURN ADVANCEMENT
+// ========================
+function advanceTurn() {
+  if (G.phase === 'lastTurns') {
+    advanceTurnAfterGoOut();
+    return;
+  }
+
+  G.currentTurn = (G.currentTurn + 1) % G.players.length;
+  G.drawnCard = null;
+
+  if (G.players[G.currentTurn].isBot) {
+    renderGame();
+    setTimeout(doBotTurn, 800 + Math.random() * 600);
+  } else {
+    renderGame();
+  }
+}
+
+function advanceTurnAfterGoOut() {
+  G.players[G.currentTurn].finishedLastTurn = true;
+  G.players[G.currentTurn].hand.forEach(c => c.faceDown = false);
+  renderGame();
+  G.lastTurnCount++;
+
+  const othersCount = G.players.length - 1;
+  if (G.lastTurnCount >= othersCount) {
+    endRound();
+    return;
+  }
+
+  do {
+    G.currentTurn = (G.currentTurn + 1) % G.players.length;
+  } while (G.players[G.currentTurn].wentOut);
+
+  G.drawnCard = null;
+
+  if (G.players[G.currentTurn].isBot) {
+    renderGame();
+    setTimeout(doBotTurn, 600 + Math.random() * 400);
+  } else {
+    renderGame();
+    showToast('Final turn! Draw then discard.');
+  }
+}
+
+function beginLastTurns() {
+  const othersCount = G.players.length - 1;
+  if (othersCount === 0) { endRound(); return; }
+
+  do {
+    G.currentTurn = (G.currentTurn + 1) % G.players.length;
+  } while (G.players[G.currentTurn].wentOut);
+
+  G.drawnCard = null;
+
+  if (G.players[G.currentTurn].isBot) {
+    renderGame();
+    setTimeout(doBotTurn, 600 + Math.random() * 400);
+  } else {
+    renderGame();
+    showToast('Final turn! Draw then discard.');
+  }
 }
 
 // ========================
@@ -823,6 +712,7 @@ function botChooseDiscard(hand) {
     const groupCount = countGroups(rest);
     const pts = isWild(card) ? -100 : cardValue(card.val);
     const score = pts - groupCount * 20;
+
     if (score > worstScore) {
       worstScore = score;
       worst = i;
@@ -855,7 +745,7 @@ function countGroups(cards) {
 }
 
 // ========================
-// END ROUND
+// END ROUND / GAME
 // ========================
 function endRound() {
   G.phase = 'roundEnd';
@@ -897,7 +787,6 @@ function nextRound() {
   const goOutBtn = document.getElementById('go-out-btn');
   if (undoBtn) undoBtn.style.display = '';
   if (goOutBtn) goOutBtn.style.display = '';
-
   G.startingPlayer = (G.startingPlayer + 1) % G.players.length;
   G.round++;
   if (G.round > 11) { showGameOver(); return; }
@@ -947,26 +836,18 @@ function closeModal(id) {
 }
 
 // ========================
-// TOAST
+// SORT HAND
 // ========================
-let toastTimeout = null;
-function showToast(msg, duration = 2000) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => el.classList.remove('show'), duration);
-}
-
-// ========================
-// WENT OUT NOTIFICATION
-// ========================
-function showWentOut(name) {
-  const overlay = document.getElementById('went-out-overlay');
-  const banner = document.getElementById('went-out-banner');
-  banner.innerHTML = `${name}<br><span style="font-size:16px;opacity:0.7">went out! Last turns...</span>`;
-  overlay.classList.add('show');
-  setTimeout(() => overlay.classList.remove('show'), 2500);
+function sortPlayerHand() {
+  const localPlayer = G.players[G.localPlayerIdx];
+  if (!localPlayer) return;
+  localPlayer.hand.sort((a, b) => {
+    if (a.isJoker && b.isJoker) return 0;
+    if (a.isJoker) return 1;
+    if (b.isJoker) return -1;
+    return cardNumericRank(a.val) - cardNumericRank(b.val);
+  });
+  renderPlayerHand();
 }
 
 function getCardTextColor(card) {
