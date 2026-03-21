@@ -250,7 +250,7 @@ function renderPlayerHand() {
 
   hand.innerHTML = '';
 
-  const CARD_W = 70;
+  const CARD_W = 80;
   const n = localPlayer.hand.length;
 
   const maxWidth = window.innerWidth - 32;
@@ -263,13 +263,13 @@ function renderPlayerHand() {
     step = Math.min(idealStep, maxStep);
   }
 
-  const CARD_H = 100;
+  const CARD_H = 120;
   const totalWidth = n <= 1 ? CARD_W : step * (n - 1) + CARD_W;
   hand.style.width = totalWidth + 'px';
   hand.style.height = CARD_H + 'px';
 
   const R = 500;
-  const angleDeg = 2;
+  const angleDeg = 1.5;
   const startAngleDeg = -((n - 1) / 2) * angleDeg;
 
   localPlayer.hand.forEach((card, idx) => {
@@ -608,7 +608,7 @@ function animateCardDraw(fromEl, toEl, faceUp, cardData, callback) {
   const fromRect = fromEl.getBoundingClientRect();
   const toRect   = toEl.getBoundingClientRect();
 
-  const CARD_W = 70, CARD_H = 100;
+  const CARD_W = 80, CARD_H = 120;
   const startX = fromRect.left + fromRect.width  / 2 - CARD_W / 2;
   const startY = fromRect.top  + fromRect.height / 2 - CARD_H / 2;
 
@@ -853,7 +853,7 @@ function renderDragPreview() {
 
   const srcNewPos = order.indexOf(src);
 
-  const CARD_W = 70;
+  const CARD_W = 80;
   const maxWidth = window.innerWidth - 32;
   const step = n <= 1 ? CARD_W : Math.min(Math.round(CARD_W * 0.26), Math.floor((maxWidth - CARD_W) / (n - 1)));
   const ARC_R = 500;

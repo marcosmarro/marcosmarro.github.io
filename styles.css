@@ -402,8 +402,8 @@ input:focus { border-color: var(--gold); }
 .cp.tl { top: 4px; left: 4px; }
 .cp.br { bottom: 4px; right: 4px; transform: rotate(180deg); }
 
-.cp-val { font-family: 'Cinzel', serif; font-weight: 900; line-height: 1; white-space: nowrap; }
-.cp-suit { line-height: 1; white-space: nowrap; }
+.cp-val { font-family: 'Cinzel', serif; font-weight: 900; line-height: 1; white-space: nowrap; color: #222; }
+.cp-suit { line-height: 1; white-space: nowrap; color: #222; }
 
 /* Suit colors */
 .suit-clubs    .cp-val, .suit-clubs    .cp-suit { color: var(--green); }
@@ -441,7 +441,7 @@ input:focus { border-color: var(--gold); }
 #player-area {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: 80px;
+  height: 100px;
   overflow: visible;
   background: linear-gradient(0deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 100%);
   pointer-events: none;
@@ -455,15 +455,15 @@ input:focus { border-color: var(--gold); }
 
 #player-hand {
   position: relative;
-  height: 100px;
+  height: 120px;
   flex-shrink: 0;
   overflow: visible;
 }
 
 #player-hand .card {
   position: absolute;
-  width: 70px;
-  height: 100px;
+  width: 80px;
+  height: 120px;
   cursor: grab;
   flex-shrink: 0;
   transform-origin: bottom center;
