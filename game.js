@@ -100,7 +100,7 @@ function showScreen(id) {
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB1PflQzaBtMKgBoJRW6bGLUW_YJ0Vk5BU",
   authDomain: "crowns-128c6.firebaseapp.com",
-  databaseURL: "https://crowns-128c6-default-rtdb.firebaseio.com",  // ← ADD THIS
+  databaseURL: "https://crowns-128c6-default-rtdb.firebaseio.com/",  // ← ADD THIS
   projectId: "crowns-128c6",
   storageBucket: "crowns-128c6.firebasestorage.app",
   messagingSenderId: "425271577628",
