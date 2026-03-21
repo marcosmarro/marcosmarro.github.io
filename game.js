@@ -185,19 +185,28 @@ function attachLobbyListener() {
     if (data.started) {
       fbLobbyRef.off('value', fbLobbyListener);
       // Recalculate myPlayerIdx from current player list (handles late joiners)
-      const idx = data.players.findIndex(p => p.id === myPlayerId);
+      const idx = normalisePlayers(data.players).findIndex(p => p.id === myPlayerId);
       myPlayerIdx = idx >= 0 ? idx : myPlayerIdx;
       startMultiplayerGame(data, myPlayerIdx);
     }
   });
 }
 
+// Firebase can return arrays as objects with numeric keys when roundtripping
+// through the database (especially single-element arrays). Always normalise.
+function normalisePlayers(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  return Object.values(raw);
+}
+
 function updateLobbyUI(data) {
+  const players = normalisePlayers(data.players);
   const list = document.getElementById('lobby-players-list');
   list.innerHTML = '';
   const slots = 6;
   for (let i = 0; i < slots; i++) {
-    const p = data.players[i];
+    const p = players[i];
     const row = document.createElement('div');
     row.className = 'lobby-player-row';
     row.innerHTML = `<div class="player-dot ${p ? '' : 'empty'}"></div>
@@ -205,7 +214,7 @@ function updateLobbyUI(data) {
       ${p && p.isHost ? '<span style="margin-left:auto;font-size:11px;color:var(--gold)">HOST</span>' : ''}`;
     list.appendChild(row);
   }
-  const canStart = data.players.length >= 2;
+  const canStart = players.length >= 2;
   const startBtn = document.getElementById('start-lobby-btn');
   if (startBtn) {
     startBtn.style.display = isLocalHost ? '' : 'none';
@@ -213,14 +222,16 @@ function updateLobbyUI(data) {
     startBtn.style.opacity = canStart ? '1' : '0.4';
   }
   document.getElementById('lobby-wait-msg').textContent =
-    `${data.players.length}/6 players — ${canStart ? 'Ready to start!' : 'Need at least 2 players'}`;
+    `${players.length}/6 players — ${canStart ? 'Ready to start!' : 'Need at least 2 players'}`;
 }
 
 function startLobbyGame() {
   if (!fbLobbyRef) return;
   fbLobbyRef.once('value', snap => {
     const data = snap.val();
-    if (!data || data.players.length < 2) return;
+    if (!data) return;
+    const players = normalisePlayers(data.players);
+    if (players.length < 2) return;
     fbLobbyRef.update({ started: true });
   });
 }
@@ -255,11 +266,6 @@ function joinLobby() {
   let abortReason = null;
 
   fbLobbyRef.transaction(current => {
-    // current === null means Firebase hasn't fetched the node yet (cold cache).
-    // Returning undefined here tells Firebase to abort — we can't distinguish
-    // "retry" from "abort" with undefined, so we use applyLocally:false (below)
-    // which makes Firebase always go to the server first, so null here genuinely
-    // means the path doesn't exist.
     if (current === null) {
       abortReason = 'not_found';
       return undefined; // abort
@@ -268,14 +274,22 @@ function joinLobby() {
       abortReason = 'started';
       return undefined; // abort
     }
-    if (current.players && current.players.length >= 6) {
+    // Firebase serialises single-element JS arrays as objects with numeric keys
+    // e.g. { "0": {...} } — so we must normalise to a real array before using
+    // .length or .push(), otherwise both silently misbehave.
+    const playersObj = current.players || {};
+    const playersArr = Array.isArray(playersObj)
+      ? playersObj
+      : Object.values(playersObj);
+
+    if (playersArr.length >= 6) {
       abortReason = 'full';
       return undefined; // abort
     }
     // Room exists, not started, not full — join it
     abortReason = null;
-    current.players = current.players || [];
-    current.players.push(newPlayer);
+    playersArr.push(newPlayer);
+    current.players = playersArr; // write back as a proper array
     return current;
   }, (txErr, committed, snap2) => {
     if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = 'Join Game'; }
@@ -375,13 +389,15 @@ function attachGameListener() {
 
 function applyRemoteState(state) {
   // Re-attach isLocalPlayer flag (not stored in Firebase)
-  state.players.forEach((p, i) => {
+  // Normalise in case Firebase returned the array as an object with numeric keys
+  const players = normalisePlayers(state.players);
+  players.forEach((p, i) => {
     p.isLocalPlayer = (p.id === myPlayerId);
   });
-  const newLocalIdx = state.players.findIndex(p => p.isLocalPlayer);
+  const newLocalIdx = players.findIndex(p => p.isLocalPlayer);
   if (newLocalIdx >= 0) G.localPlayerIdx = newLocalIdx;
 
-  G.players        = state.players;
+  G.players        = players;
   G.deck           = state.deck           || [];
   G.discardPile    = state.discardPile    || [];
   G.round          = state.round;
@@ -404,7 +420,7 @@ function startMultiplayerGame(data, myIdx) {
   G.localPlayerIdx = myIdx;
   G.botGame        = false;
 
-  G.players = data.players.map((p, i) => ({
+  G.players = normalisePlayers(data.players).map((p, i) => ({
     id:               p.id,
     name:             p.name,
     hand:             [],
