@@ -97,7 +97,7 @@ function showScreen(id) {
 // then go to Project Settings → Your Apps → Web App → SDK setup & config
 // ========================
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyB1PflQzaBtMKgBoJRW6bGLUW_YJ0Vk5BU",
   authDomain: "crowns-128c6.firebaseapp.com",
   projectId: "crowns-128c6",
