@@ -26,7 +26,7 @@ let G = {
 // CARD DEFINITIONS
 // ========================
 const SUITS = ['clubs','hearts','spades','stars','diamonds'];
-const SUIT_SYMBOLS = { clubs:'♣︎', hearts:'♥︎', spades:'♠︎', stars:'★︎', diamonds:'♦︎' };
+const SUIT_SYMBOLS = { clubs:'♣', hearts:'♥', spades:'♠', stars:'★', diamonds:'♦' };
 const VALUES = [3,4,5,6,7,8,9,10,'J','Q','K'];
 const VALUE_POINTS = { J:11, Q:12, K:13 };
 
@@ -91,11 +91,38 @@ function showScreen(id) {
 }
 
 // ========================
+// FIREBASE CONFIG
+// Replace these values with your own Firebase project credentials.
+// Create a free project at https://console.firebase.google.com
+// then go to Project Settings → Your Apps → Web App → SDK setup & config
+// ========================
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+// Firebase references (populated after init)
+let fbApp = null, fbDb = null;
+let fbLobbyRef = null, fbGameRef = null, fbLobbyListener = null, fbGameListener = null;
+
+function initFirebase() {
+  if (fbApp) return;
+  fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+  fbDb  = firebase.database();
+}
+
+// ========================
 // LOBBY
 // ========================
-let lobbyCode = '';
-let lobbyPollInterval = null;
+let lobbyCode   = '';
 let isLocalHost = false;
+let myPlayerId  = '';
+let myPlayerIdx = 0;
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -105,31 +132,48 @@ function generateCode() {
 }
 
 function createLobby() {
+  initFirebase();
   const name = document.getElementById('create-player-name').value.trim() || 'Host';
-  lobbyCode = generateCode();
+  lobbyCode   = generateCode();
   isLocalHost = true;
+  myPlayerId  = 'host_' + Date.now();
+  myPlayerIdx = 0;
+
   document.getElementById('lobby-code-display').textContent = lobbyCode;
 
   const lobbyData = {
     code: lobbyCode,
-    players: [{ name, id: 'host_' + Date.now(), isHost: true }],
+    players: [{ name, id: myPlayerId, isHost: true }],
     started: false,
     created: Date.now()
   };
-  localStorage.setItem('lobby_' + lobbyCode, JSON.stringify(lobbyData));
 
-  updateLobbyUI(lobbyData);
-  showScreen('lobby-waiting-screen');
+  fbLobbyRef = fbDb.ref('lobbies/' + lobbyCode);
+  fbLobbyRef.set(lobbyData).then(() => {
+    // Remove lobby from Firebase when host closes/leaves
+    fbLobbyRef.onDisconnect().remove();
+    updateLobbyUI(lobbyData);
+    showScreen('lobby-waiting-screen');
+    attachLobbyListener();
+  }).catch(err => {
+    showToast('Connection error: ' + err.message);
+  });
+}
 
-  lobbyPollInterval = setInterval(() => {
-    const data = JSON.parse(localStorage.getItem('lobby_' + lobbyCode) || 'null');
+function attachLobbyListener() {
+  if (fbLobbyListener) fbLobbyRef.off('value', fbLobbyListener);
+  fbLobbyListener = fbLobbyRef.on('value', snap => {
+    const data = snap.val();
     if (!data) return;
     updateLobbyUI(data);
     if (data.started) {
-      clearInterval(lobbyPollInterval);
-      startMultiplayerGame(data, 0);
+      fbLobbyRef.off('value', fbLobbyListener);
+      // Recalculate myPlayerIdx from current player list (handles late joiners)
+      const idx = data.players.findIndex(p => p.id === myPlayerId);
+      myPlayerIdx = idx >= 0 ? idx : myPlayerIdx;
+      startMultiplayerGame(data, myPlayerIdx);
     }
-  }, 1000);
+  });
 }
 
 function updateLobbyUI(data) {
@@ -148,87 +192,167 @@ function updateLobbyUI(data) {
   const canStart = data.players.length >= 2;
   const startBtn = document.getElementById('start-lobby-btn');
   if (startBtn) {
-    if (!isLocalHost) {
-      startBtn.style.display = 'none';
-    } else {
-      startBtn.style.display = '';
-      startBtn.disabled = !canStart;
-      startBtn.style.opacity = canStart ? '1' : '0.4';
-    }
+    startBtn.style.display = isLocalHost ? '' : 'none';
+    startBtn.disabled      = !canStart;
+    startBtn.style.opacity = canStart ? '1' : '0.4';
   }
   document.getElementById('lobby-wait-msg').textContent =
     `${data.players.length}/6 players — ${canStart ? 'Ready to start!' : 'Need at least 2 players'}`;
 }
 
 function startLobbyGame() {
-  const data = JSON.parse(localStorage.getItem('lobby_' + lobbyCode));
-  if (!data || data.players.length < 2) return;
-  data.started = true;
-  localStorage.setItem('lobby_' + lobbyCode, JSON.stringify(data));
-  if (lobbyPollInterval) { clearInterval(lobbyPollInterval); lobbyPollInterval = null; }
-  startMultiplayerGame(data, 0);
+  if (!fbLobbyRef) return;
+  fbLobbyRef.once('value', snap => {
+    const data = snap.val();
+    if (!data || data.players.length < 2) return;
+    fbLobbyRef.update({ started: true });
+  });
 }
 
 function joinLobby() {
+  initFirebase();
   const name = document.getElementById('join-player-name').value.trim() || 'Player';
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
-  const err = document.getElementById('join-error');
+  const err  = document.getElementById('join-error');
 
-  const data = JSON.parse(localStorage.getItem('lobby_' + code) || 'null');
-  if (!data || data.started || data.players.length >= 6) {
-    err.style.display = 'block';
-    return;
-  }
-  err.style.display = 'none';
-  isLocalHost = false;
-
-  const newPlayer = { name, id: 'p_' + Date.now(), isHost: false };
-  data.players.push(newPlayer);
-  localStorage.setItem('lobby_' + code, JSON.stringify(data));
-
-  const myIdx = data.players.length - 1;
-  lobbyCode = code;
-  document.getElementById('lobby-code-display').textContent = code;
-  updateLobbyUI(data);
-  showScreen('lobby-waiting-screen');
-
-  lobbyPollInterval = setInterval(() => {
-    const d = JSON.parse(localStorage.getItem('lobby_' + code) || 'null');
-    if (!d) return;
-    updateLobbyUI(d);
-    if (d.started) {
-      clearInterval(lobbyPollInterval);
-      startMultiplayerGame(d, myIdx);
+  fbLobbyRef = fbDb.ref('lobbies/' + code);
+  fbLobbyRef.once('value', snap => {
+    const data = snap.val();
+    if (!data || data.started || (data.players && data.players.length >= 6)) {
+      err.style.display = 'block';
+      return;
     }
-  }, 1000);
+    err.style.display = 'none';
+    isLocalHost  = false;
+    lobbyCode    = code;
+    myPlayerId   = 'p_' + Date.now();
+
+    const newPlayer = { name, id: myPlayerId, isHost: false };
+    // Use a transaction so two people joining simultaneously don't collide
+    fbLobbyRef.transaction(current => {
+      if (!current || current.started || (current.players && current.players.length >= 6)) return; // abort
+      current.players = current.players || [];
+      current.players.push(newPlayer);
+      return current;
+    }, (err2, committed, snap2) => {
+      if (!committed || err2) { err.style.display = 'block'; return; }
+      const updated = snap2.val();
+      myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
+      document.getElementById('lobby-code-display').textContent = code;
+      updateLobbyUI(updated);
+      showScreen('lobby-waiting-screen');
+      attachLobbyListener();
+    });
+  });
 }
 
 function leaveLobby() {
-  if (lobbyPollInterval) clearInterval(lobbyPollInterval);
-  if (lobbyCode) {
-    const data = JSON.parse(localStorage.getItem('lobby_' + lobbyCode) || 'null');
-    if (data) { localStorage.removeItem('lobby_' + lobbyCode); }
-  }
+  if (fbLobbyListener && fbLobbyRef) fbLobbyRef.off('value', fbLobbyListener);
+  if (isLocalHost && fbLobbyRef) fbLobbyRef.remove();
+  fbLobbyRef = null;
   showScreen('home-screen');
 }
 
+// ========================
+// MULTIPLAYER GAME SYNC
+// ========================
+// The host owns authoritative state and pushes the full G snapshot to Firebase
+// after every action. All clients (including host) listen and re-render from it.
+
+function pushGameState() {
+  if (G.botGame || !isLocalHost || !fbGameRef) return;
+  // Serialise only what remote players need (omit DOM-unfriendly fields)
+  const state = {
+    players:        G.players.map(p => ({
+      id:               p.id,
+      name:             p.name,
+      hand:             p.hand,
+      score:            p.score,
+      roundScores:      p.roundScores || [],
+      isBot:            p.isBot,
+      wentOut:          p.wentOut,
+      finishedLastTurn: p.finishedLastTurn,
+    })),
+    deck:            G.deck,
+    discardPile:     G.discardPile,
+    round:           G.round,
+    currentTurn:     G.currentTurn,
+    startingPlayer:  G.startingPlayer,
+    phase:           G.phase,
+    lastTurnPlayer:  G.lastTurnPlayer,
+    lastTurnCount:   G.lastTurnCount,
+    drawnCard:       G.drawnCard,
+    drawnFromDiscard: G.drawnFromDiscard,
+    gameOver:        G.gameOver,
+    ts:              Date.now(),
+  };
+  fbGameRef.set(state);
+}
+
+function attachGameListener() {
+  if (!fbGameRef) return;
+  if (fbGameListener) fbGameRef.off('value', fbGameListener);
+  fbGameListener = fbGameRef.on('value', snap => {
+    const state = snap.val();
+    if (!state) return;
+    applyRemoteState(state);
+  });
+}
+
+function applyRemoteState(state) {
+  // Re-attach isLocalPlayer flag (not stored in Firebase)
+  state.players.forEach((p, i) => {
+    p.isLocalPlayer = (p.id === myPlayerId);
+  });
+  const newLocalIdx = state.players.findIndex(p => p.isLocalPlayer);
+  if (newLocalIdx >= 0) G.localPlayerIdx = newLocalIdx;
+
+  G.players        = state.players;
+  G.deck           = state.deck           || [];
+  G.discardPile    = state.discardPile    || [];
+  G.round          = state.round;
+  G.currentTurn    = state.currentTurn;
+  G.startingPlayer = state.startingPlayer;
+  G.phase          = state.phase;
+  G.lastTurnPlayer = state.lastTurnPlayer;
+  G.lastTurnCount  = state.lastTurnCount;
+  G.drawnCard      = state.drawnCard      || null;
+  G.drawnFromDiscard = state.drawnFromDiscard || false;
+  G.gameOver       = state.gameOver       || false;
+  G.dealing        = false;
+  G.revealedSet    = new Set();
+
+  renderGame();
+}
+
 function startMultiplayerGame(data, myIdx) {
-  G.players = data.players.map((p, i) => ({
-    id: p.id,
-    name: p.name,
-    hand: [],
-    score: 0,
-    roundScores: [],
-    isBot: false,
-    wentOut: false,
-    finishedLastTurn: false,
-    isLocalPlayer: i === myIdx
-  }));
+  myPlayerIdx      = myIdx;
   G.localPlayerIdx = myIdx;
-  G.botGame = false;
-  G.round = 1;
-  G.startingPlayer = 0;
-  startRound();
+  G.botGame        = false;
+
+  G.players = data.players.map((p, i) => ({
+    id:               p.id,
+    name:             p.name,
+    hand:             [],
+    score:            0,
+    roundScores:      [],
+    isBot:            false,
+    wentOut:          false,
+    finishedLastTurn: false,
+    isLocalPlayer:    i === myIdx
+  }));
+
+  fbGameRef = fbDb.ref('games/' + lobbyCode);
+
+  if (isLocalHost) {
+    // Host sets up and pushes initial state; everyone else listens
+    G.round          = 1;
+    G.startingPlayer = 0;
+    startRound();          // startRound calls pushGameState() at the end
+  } else {
+    showScreen('game-screen');
+    attachGameListener();
+  }
 }
 
 // ========================
@@ -281,6 +405,11 @@ function startRound() {
     }
     G.dealing = false;
     renderGame();
+
+    if (!G.botGame) {
+      pushGameState();
+      attachGameListener();
+    }
 
     if (G.players[G.currentTurn].isBot) {
       setTimeout(doBotTurn, 1200);
@@ -380,6 +509,7 @@ function confirmDiscard() {
   G.selectedCardIdx = -1;
   advanceTurn();
   renderGame();
+  pushGameState();
 }
 
 function undoDiscard() {
@@ -444,6 +574,7 @@ function tryGoOut() {
 
   showWentOut(localPlayer.name);
   renderGame();
+  pushGameState();
   flipRevealPlayerHand(300);
   setTimeout(beginLastTurns, 1500);
 }
@@ -684,6 +815,7 @@ function doBotTurn() {
       function afterDiscard() {
         G.discardPile.push(discarded);
         advanceTurn();
+        pushGameState();
       }
 
       if (fromEl2 && toEl2) {
@@ -766,6 +898,7 @@ function endRound() {
   });
 
   renderGame();
+  pushGameState();
 
   const continueBtn = document.getElementById('continue-btn');
   if (continueBtn) {

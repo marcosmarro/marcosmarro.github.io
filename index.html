@@ -201,15 +201,20 @@
   <div id="went-out-banner"></div>
 </div>
 
-<script src="game.js"></script>
-<script src="render.js"></script>
+<!-- Firebase SDK (compat build) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="game.js" defer></script>
+<script src="render.js" defer></script>
 <script>
-  // Init
-  showScreen('home-screen');
-  document.getElementById('draw-pile-visual').addEventListener('click', () => {
-    if (isMyTurn() && G.drawnCard === null && (G.phase === 'draw' || G.phase === 'lastTurns') && !G.dealing) {
-      drawFromDeck();
-    }
+  // Runs after all deferred scripts have executed
+  window.addEventListener('load', () => {
+    showScreen('home-screen');
+    document.getElementById('draw-pile-visual').addEventListener('click', () => {
+      if (isMyTurn() && G.drawnCard === null && (G.phase === 'draw' || G.phase === 'lastTurns') && !G.dealing) {
+        drawFromDeck();
+      }
+    });
   });
 </script>
 </body>
