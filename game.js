@@ -487,7 +487,9 @@ function processAction(action) {
     G.lastTurnPlayer = G.players.indexOf(player);
     G.phase = 'lastTurns';
     G.lastTurnCount = 0;
-    pushGameState({ type: 'goOut', actorId: action.actorId, card });
+    const wasPreviewCard = G.previewCard;
+    G.previewCard = null;
+    pushGameState({ type: 'goOut', actorId: action.actorId, card, wasPreviewCard: wasPreviewCard || null });
     return;
   }
 }
@@ -669,17 +671,22 @@ function applyRemoteState(state) {
 
   if (anim.type === 'goOut') {
     const actor = G.players.find(p => p.id === anim.actorId);
-    if (actor) showWentOut(actor.name);
 
     const afterAnim = (done) => {
+      showWentOut(actor?.name);
       renderGame();
       done();
       if (actor?.isLocalPlayer) flipRevealPlayerHand(300);
       if (isLocalHost) setTimeout(beginLastTurns, 1500);
     };
 
-    // Actor already rendered optimistically (showWentOut + flipReveal already ran locally)
+    // Actor already rendered optimistically
     if (actor?.isLocalPlayer) { afterAnim(() => {}); return; }
+
+    // Card was already previewed — skip the fly, go straight to banner
+    const alreadyPreviewed = (anim.wasPreviewCard && anim.wasPreviewCard.id === anim.card.id)
+                          || (prevPreviewCard && prevPreviewCard.id === anim.card.id);
+    if (alreadyPreviewed) { afterAnim(() => {}); return; }
 
     const fromEl = document.getElementById('opp-cards-' + actor.id);
     const toEl = document.getElementById('discard-drop-target');
@@ -1078,8 +1085,12 @@ function tryGoOut() {
   const card = localPlayer.hand[discardIdx];
 
   if (!G.botGame) {
-    // Send action to host first — host is the authority that mutates G.
-    // Non-host players get optimistic local feedback; host waits for applyRemoteState.
+    // Always preview the discard card first so observers see it, then go out.
+    // If not already previewed, send preview now.
+    if (!G.previewCard || G.previewCard.id !== card.id) {
+      sendAction({ type: 'preview', actorId: localPlayer.id, card });
+      if (!isLocalHost) flyCardToDiscardPreview(discardIdx);
+    }
     G.selectedCardIdx = -1;
     sendAction({ type: 'goOut', actorId: localPlayer.id, card });
 
