@@ -276,7 +276,7 @@ input:focus { border-color: var(--gold); }
 .opponent-name {
   position: absolute;
   font-family: 'Cinzel', serif;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255,255,255,0.7);
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -301,7 +301,7 @@ input:focus { border-color: var(--gold); }
   position: absolute;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 0;
   transform: translate(-50%, calc(-50% + 25px));
   left: 50%;
@@ -311,13 +311,14 @@ input:focus { border-color: var(--gold); }
   display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: center;
   gap: 20px;
 }
 #action-area {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  width: 120px;
+  width: 100%;
   margin-top: 8px;
   z-index: 20;
 }
@@ -406,32 +407,32 @@ input:focus { border-color: var(--gold); }
 .cp-suit { line-height: 1; white-space: nowrap; color: #222; }
 
 /* Suit colors */
-.suit-clubs    .cp-val, .suit-clubs    .cp-suit { color: var(--green); }
-.suit-hearts   .cp-val, .suit-hearts   .cp-suit { color: var(--red); }
-.suit-spades   .cp-val, .suit-spades   .cp-suit { color: #1a1a1a; }
-.suit-stars    .cp-val, .suit-stars    .cp-suit { color: var(--yellow); }
-.suit-diamonds .cp-val, .suit-diamonds .cp-suit { color: var(--blue); }
-.suit-wild     .cp-val, .suit-wild     .cp-suit { color: var(--gold); }
+.suit-clubs    .cp-val, .suit-clubs    .cp-suit { color: #2d7a3a; }  /* green  */
+.suit-hearts   .cp-val, .suit-hearts   .cp-suit { color: #c0392b; }  /* red    */
+.suit-spades   .cp-val, .suit-spades   .cp-suit { color: #1a1a1a; }  /* black  */
+.suit-stars    .cp-val, .suit-stars    .cp-suit { color: #f0b429; }  /* yellow */
+.suit-diamonds .cp-val, .suit-diamonds .cp-suit { color: #1a5fa8; }  /* blue   */
+.suit-wild     .cp-val, .suit-wild     .cp-suit { color: #c8940a; }
 
 /* Joker vertical letters */
 .cp-joker { display: flex; flex-direction: column; line-height: 1; }
 .cp-joker span { font-family: 'Cinzel', serif; font-weight: 900; line-height: 1.1; display: block; }
-.jc-0 { color: var(--green); }
-.jc-1 { color: var(--red); }
-.jc-2 { color: #1a1a1a; }
-.jc-3 { color: var(--yellow); }
-.jc-4 { color: var(--blue); }
+.jc-0 { color: #2d7a3a; }  /* J = clubs    = green  */
+.jc-1 { color: #c0392b; }  /* O = hearts   = red    */
+.jc-2 { color: #4a4a6a; }  /* K = spades   = slate  */
+.jc-3 { color: #c8940a; }  /* E = stars    = gold   */
+.jc-4 { color: #1a5fa8; }  /* R = diamonds = blue   */
 
 /* Pile stacking effect */
 .pile-stack {
   position: relative;
-  width: 50px;
-  height: 70px;
+  width: 60px;
+  height: 90px;
 }
 .pile-stack .card {
   position: absolute;
   top: 0; left: 0;
-  width: 50px; height: 70px;
+  width: 60px; height: 90px;
 }
 .pile-stack .card:nth-child(1) { transform: rotate(-2deg) translate(-1px, 1px); }
 .pile-stack .card:nth-child(2) { transform: rotate(1deg) translate(1px, 0px); }
@@ -441,7 +442,7 @@ input:focus { border-color: var(--gold); }
 #player-area {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: 100px;
+  height: 150px;
   overflow: visible;
   background: linear-gradient(0deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 100%);
   pointer-events: none;
@@ -455,15 +456,15 @@ input:focus { border-color: var(--gold); }
 
 #player-hand {
   position: relative;
-  height: 120px;
+  height: 180px;
   flex-shrink: 0;
   overflow: visible;
 }
 
 #player-hand .card {
   position: absolute;
-  width: 80px;
-  height: 120px;
+  width: 110px;
+  height: 180px;
   cursor: grab;
   flex-shrink: 0;
   transform-origin: bottom center;

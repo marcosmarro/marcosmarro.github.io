@@ -26,7 +26,7 @@ let G = {
 // CARD DEFINITIONS
 // ========================
 const SUITS = ['clubs','hearts','spades','stars','diamonds'];
-const SUIT_SYMBOLS = { clubs:'♣', hearts:'♥', spades:'♠', stars:'★', diamonds:'♦' };
+const SUIT_SYMBOLS = { clubs:'♣︎', hearts:'♥︎', spades:'♠︎', stars:'★︎', diamonds:'♦︎' };
 const VALUES = [3,4,5,6,7,8,9,10,'J','Q','K'];
 const VALUE_POINTS = { J:11, Q:12, K:13 };
 
@@ -161,18 +161,27 @@ function createLobby() {
 
   fbLobbyRef = fbDb.ref('lobbies/' + lobbyCode);
 
-  // Show waiting screen immediately — don't block on Firebase round-trip
-  document.getElementById('lobby-code-display').textContent = lobbyCode;
-  updateLobbyUI(lobbyData);
-  showScreen('lobby-waiting-screen');
+  const createBtn = document.querySelector('#create-lobby-screen .btn-primary');
+  if (createBtn) { createBtn.disabled = true; createBtn.textContent = 'Creating...'; }
 
+  // Wait for Firebase to confirm the write before showing the lobby screen.
+  // If we show it optimistically, the phone may try to join before the data
+  // actually exists in the database and get "room not found".
   fbLobbyRef.set(lobbyData).then(() => {
-    fbLobbyRef.onDisconnect().remove();
-    attachLobbyListener();
+    if (createBtn) { createBtn.disabled = false; createBtn.textContent = 'Create Room'; }
+    // Verify the data is actually readable before showing the code
+    return fbLobbyRef.get().then(snap => {
+      document.getElementById('lobby-code-display').textContent = lobbyCode;
+      updateLobbyUI(lobbyData);
+      showScreen('lobby-waiting-screen');
+      fbLobbyRef.onDisconnect().remove();
+      attachLobbyListener();
+    });
   }).catch(err => {
+    if (createBtn) { createBtn.disabled = false; createBtn.textContent = 'Create Room'; }
     console.error('Firebase write failed:', err);
     showToast('Connection error: ' + err.message);
-    showScreen('create-lobby-screen'); // return user if write fails
+    showScreen('create-lobby-screen');
   });
 }
 
@@ -227,7 +236,7 @@ function updateLobbyUI(data) {
 
 function startLobbyGame() {
   if (!fbLobbyRef) return;
-  fbLobbyRef.once('value', snap => {
+  fbLobbyRef.get().then(snap => {
     const data = snap.val();
     if (!data) return;
     const players = normalisePlayers(data.players);
@@ -259,70 +268,50 @@ function joinLobby() {
 
   fbLobbyRef = fbDb.ref('lobbies/' + code);
 
-  // Use transaction directly — skipping the once() pre-check which fails on cold
-  // cache (first read on a new device returns null before Firebase has synced).
-  // The transaction itself handles the "room not found" case via applyLocally:false.
-  // Track why we aborted so the completion callback can show the right error
-  let abortReason = null;
+  fbLobbyRef.get().then(snap => {
+    const data = snap.val();
 
-  fbLobbyRef.transaction(current => {
-    if (current === null) {
-      abortReason = 'not_found';
-      return undefined; // abort
+    if (!data) {
+      showJoinError('Room not found. Check the code and try again.');
+      return;
     }
-    if (current.started) {
-      abortReason = 'started';
-      return undefined; // abort
+    if (data.started) {
+      showJoinError('That game has already started.');
+      return;
     }
-    // Firebase serialises single-element JS arrays as objects with numeric keys
-    // e.g. { "0": {...} } — so we must normalise to a real array before using
-    // .length or .push(), otherwise both silently misbehave.
-    const playersObj = current.players || {};
-    const playersArr = Array.isArray(playersObj)
-      ? playersObj
-      : Object.values(playersObj);
+    const players = normalisePlayers(data.players);
+    if (players.length >= 6) {
+      showJoinError('Room is full (6/6 players).');
+      return;
+    }
 
-    if (playersArr.length >= 6) {
-      abortReason = 'full';
-      return undefined; // abort
-    }
-    // Room exists, not started, not full — join it
-    abortReason = null;
-    playersArr.push(newPlayer);
-    current.players = playersArr; // write back as a proper array
-    return current;
-  }, (txErr, committed, snap2) => {
+    fbLobbyRef.child('players').push(newPlayer).then(newRef => {
+        // Auto-remove if the joiner disconnects (closes tab, loses connection etc.)
+        newRef.onDisconnect().remove();
+        return fbLobbyRef.get();
+    }).then(snap2 => {
+      const updated = snap2.val();
+      if (!updated) { showJoinError('Could not join. Please try again.'); return; }
+
+      const updatedPlayers = normalisePlayers(updated.players);
+      myPlayerIdx = updatedPlayers.findIndex(p => p.id === myPlayerId);
+
+      if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = 'Join Game'; }
+      document.getElementById('lobby-code-display').textContent = code;
+      updateLobbyUI(updated);
+      showScreen('lobby-waiting-screen');
+      attachLobbyListener();
+    });
+  }).catch(e => {
+    console.error('joinLobby error:', e);
+    showJoinError('Connection error. Please try again.');
+  });
+
+  function showJoinError(msg) {
     if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = 'Join Game'; }
-
-    if (txErr) {
-      console.error('Transaction error:', txErr);
-      err.textContent = 'Connection error. Please try again.';
-      err.style.display = 'block';
-      return;
-    }
-    if (!committed) {
-      if (abortReason === 'not_found') {
-        err.textContent = 'Room not found. Check the code and try again.';
-      } else if (abortReason === 'started') {
-        err.textContent = 'That game has already started.';
-      } else if (abortReason === 'full') {
-        err.textContent = 'Room is full (6/6 players).';
-      } else {
-        err.textContent = 'Could not join. Please try again.';
-      }
-      err.style.display = 'block';
-      return;
-    }
-
-    const updated = snap2.val();
-    if (!updated) { err.textContent = 'Room not found.'; err.style.display = 'block'; return; }
-
-    myPlayerIdx = updated.players.findIndex(p => p.id === myPlayerId);
-    document.getElementById('lobby-code-display').textContent = code;
-    updateLobbyUI(updated);
-    showScreen('lobby-waiting-screen');
-    attachLobbyListener();
-  }, false /* applyLocally:false → Firebase always reads from server first, so null = truly doesn't exist */);
+    err.textContent = msg;
+    err.style.display = 'block';
+  }
 }
 
 function leaveLobby() {
@@ -330,11 +319,14 @@ function leaveLobby() {
   if (isLocalHost && fbLobbyRef) {
     fbLobbyRef.remove();
   } else if (fbLobbyRef && myPlayerId) {
-    // Non-host: remove self from players list without destroying the lobby
-    fbLobbyRef.transaction(current => {
-      if (!current) return current;
-      current.players = (current.players || []).filter(p => p.id !== myPlayerId);
-      return current;
+    // Players are stored as push-key children under /players.
+    // Find the key whose .id matches ours and remove just that child.
+    fbLobbyRef.child('players').get().then(snap => {
+      snap.forEach(child => {
+        if (child.val().id === myPlayerId) {
+          child.ref.remove();
+        }
+      });
     });
   }
   fbLobbyRef = null;
@@ -1083,7 +1075,6 @@ function sortPlayerHand() {
 
 function getCardTextColor(card) {
   if (card.isJoker) return 'var(--joker)';
-  if (isWild(card)) return 'var(--gold)';
   const map = { clubs: 'var(--green)', hearts: 'var(--red)', spades: '#1a1a1a', stars: 'var(--yellow)', diamonds: 'var(--blue)' };
   return map[card.suit] || '#333';
 }

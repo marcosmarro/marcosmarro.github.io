@@ -112,8 +112,8 @@ function renderOpponentCards() {
     const n = p.hand.length;
     if (n === 0) { el.style.cssText = 'width:0;height:0'; return; }
 
-    const CW = 70, CH = 100;
-    const SIDE_CW = 70, SIDE_CH = 100;
+    const CW = 75, CH = 120;
+    const SIDE_CW = 75, SIDE_CH = 120;
     const CROP = 0.20;
     const isSide = seat === 'left' || seat === 'right';
     const isCorner = seat === 'corner-tl' || seat === 'corner-tr';
@@ -263,13 +263,13 @@ function renderPlayerHand() {
     step = Math.min(idealStep, maxStep);
   }
 
-  const CARD_H = 120;
+  const CARD_H = 180;
   const totalWidth = n <= 1 ? CARD_W : step * (n - 1) + CARD_W;
   hand.style.width = totalWidth + 'px';
   hand.style.height = CARD_H + 'px';
 
   const R = 500;
-  const angleDeg = 1.5;
+  const angleDeg = 2;
   const startAngleDeg = -((n - 1) / 2) * angleDeg;
 
   localPlayer.hand.forEach((card, idx) => {
@@ -326,7 +326,7 @@ function buildPip(card, isLarge) {
     if (card.isJoker) {
       const col = document.createElement('div');
       col.className = 'cp-joker';
-      const fs = '9px';
+      const fs = '10px';
       JOKER_LETTERS.forEach((letter, i) => {
         const span = document.createElement('span');
         span.className = JOKER_LETTER_CLASSES[i];
@@ -336,14 +336,18 @@ function buildPip(card, isLarge) {
       });
       pip.appendChild(col);
     } else {
+      const cardColor = getCardTextColor(card);
+
       const val = document.createElement('div');
       val.className = 'cp-val';
-      val.style.fontSize = '13px';
+      val.style.fontSize = '18px';
+      val.style.color = cardColor;
       val.textContent = card.val;
 
       const suit = document.createElement('div');
       suit.className = 'cp-suit';
-      suit.style.fontSize = '10px';
+      suit.style.fontSize = '14px';
+      suit.style.color = cardColor;
       suit.textContent = SUIT_SYMBOLS[card.suit] || '';
 
       pip.appendChild(val);
