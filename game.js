@@ -22,6 +22,23 @@ let G = {
   revealedSet: new Set(),
 };
 
+// Queues the latest remote state while an animation is playing,
+// so mid-animation Firebase updates don't corrupt in-progress animations.
+let pendingRemoteState = null;
+let isAnimating = false;
+
+function withAnimation(fn) {
+  isAnimating = true;
+  fn(() => {
+    isAnimating = false;
+    if (pendingRemoteState) {
+      const s = pendingRemoteState;
+      pendingRemoteState = null;
+      applyRemoteState(s);
+    }
+  });
+}
+
 // ========================
 // CARD DEFINITIONS
 // ========================
@@ -138,7 +155,7 @@ let myPlayerIdx = 0;
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
 
@@ -251,8 +268,8 @@ function joinLobby() {
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
   const err  = document.getElementById('join-error');
 
-  if (!code || code.length !== 6) {
-    err.textContent = 'Please enter a 6-letter room code';
+  if (!code || code.length !== 4) {
+    err.textContent = 'Please enter a 4-letter room code';
     err.style.display = 'block';
     return;
   }
@@ -339,9 +356,8 @@ function leaveLobby() {
 // The host owns authoritative state and pushes the full G snapshot to Firebase
 // after every action. All clients (including host) listen and re-render from it.
 
-function pushGameState() {
+function pushGameState(anim) {
   if (G.botGame || !isLocalHost || !fbGameRef) return;
-  // Serialise only what remote players need (omit DOM-unfriendly fields)
   const state = {
     players:        G.players.map(p => ({
       id:               p.id,
@@ -364,10 +380,100 @@ function pushGameState() {
     drawnCard:       G.drawnCard,
     drawnFromDiscard: G.drawnFromDiscard,
     gameOver:        G.gameOver,
+    anim:            anim || null,
     ts:              Date.now(),
   };
   fbGameRef.set(state);
 }
+
+// Non-host players write actions here; host processes them.
+// Host calls processAction() directly (no Firebase round-trip needed).
+function sendAction(action) {
+  if (G.botGame) return;
+  if (isLocalHost) {
+    processAction(action);
+  } else {
+    fbGameRef.child('pendingAction').set({ ...action, ts: Date.now() });
+  }
+}
+
+let fbActionListener = null;
+function attachActionListener() {
+  if (!fbGameRef || !isLocalHost) return;
+  const ref = fbGameRef.child('pendingAction');
+  if (fbActionListener) ref.off('value', fbActionListener);
+  fbActionListener = ref.on('value', snap => {
+    const action = snap.val();
+    if (!action) return;
+    ref.remove(); // clear so it doesn't re-fire
+    processAction(action);
+  });
+}
+
+// Host-side: apply an incoming player action to G, push state + anim cue.
+function processAction(action) {
+  if (!isLocalHost) return;
+
+  if (action.type === 'drawFromDeck') {
+    if (G.deck.length === 0) {
+      const top = G.discardPile.pop();
+      G.deck = shuffle([...G.discardPile]);
+      G.discardPile = top ? [top] : [];
+    }
+    if (G.deck.length === 0) return;
+    const card = G.deck.pop();
+    G.drawnCard = card;
+    G.drawnFromDiscard = false;
+    const player = G.players.find(p => p.id === action.actorId);
+    if (player) player.hand.push(card);
+    pushGameState({ type: 'draw', actorId: action.actorId, fromDiscard: false, card });
+    return;
+  }
+
+  if (action.type === 'drawFromDiscard') {
+    if (G.discardPile.length === 0) return;
+    const card = G.discardPile.pop();
+    G.drawnCard = card;
+    G.drawnFromDiscard = true;
+    const player = G.players.find(p => p.id === action.actorId);
+    if (player) player.hand.push(card);
+    pushGameState({ type: 'draw', actorId: action.actorId, fromDiscard: true, card });
+    return;
+  }
+
+  if (action.type === 'discard') {
+    const player = G.players.find(p => p.id === action.actorId);
+    if (!player) return;
+    const cardIdx = player.hand.findIndex(c => c.id === action.card.id);
+    if (cardIdx < 0) return;
+    const card = player.hand.splice(cardIdx, 1)[0];
+    G.discardPile.push(card);
+    G.drawnCard = null;
+    advanceTurn();
+    pushGameState({ type: 'discard', actorId: action.actorId, card });
+    return;
+  }
+
+  if (action.type === 'goOut') {
+    const player = G.players.find(p => p.id === action.actorId);
+    if (!player) return;
+    const cardIdx = player.hand.findIndex(c => c.id === action.card.id);
+    if (cardIdx < 0) return;
+    const card = player.hand.splice(cardIdx, 1)[0];
+    G.discardPile.push(card);
+    G.drawnCard = null;
+    player.wentOut = true;
+    player.finishedLastTurn = true;
+    player.hand.forEach(c => c.faceDown = false);
+    G.lastTurnPlayer = G.players.indexOf(player);
+    G.phase = 'lastTurns';
+    G.lastTurnCount = 0;
+    pushGameState({ type: 'goOut', actorId: action.actorId, card });
+    return;
+  }
+}
+
+let lastAppliedTs = 0;
 
 function attachGameListener() {
   if (!fbGameRef) return;
@@ -375,11 +481,23 @@ function attachGameListener() {
   fbGameListener = fbGameRef.on('value', snap => {
     const state = snap.val();
     if (!state) return;
+    // Skip exact duplicates (same timestamp = same push, already processed)
+    if (state.ts && state.ts === lastAppliedTs) return;
+    if (state.ts) lastAppliedTs = state.ts;
     applyRemoteState(state);
   });
+  attachActionListener();
 }
 
+
+
 function applyRemoteState(state) {
+  // If an animation is in progress, queue this state and apply it when done
+  if (isAnimating) {
+    pendingRemoteState = state;
+    return;
+  }
+
   // Re-attach isLocalPlayer flag (not stored in Firebase)
   // Normalise in case Firebase returned the array as an object with numeric keys
   const players = normalisePlayers(state.players);
@@ -389,6 +507,9 @@ function applyRemoteState(state) {
   const newLocalIdx = players.findIndex(p => p.isLocalPlayer);
   if (newLocalIdx >= 0) G.localPlayerIdx = newLocalIdx;
 
+  const anim = state.anim || null;
+
+  // Apply all non-visual state first
   G.players        = players;
   G.deck           = state.deck           || [];
   G.discardPile    = state.discardPile    || [];
@@ -404,7 +525,210 @@ function applyRemoteState(state) {
   G.dealing        = false;
   G.revealedSet    = new Set();
 
+  // No anim cue — just render (e.g. round end, score updates, turn advance)
+  if (!anim) {
+    renderGame();
+    // If it's now a bot's turn and we're the host, kick it off
+    if (isLocalHost) {
+      const next = G.players[G.currentTurn];
+      if (next?.isBot) setTimeout(doBotTurn, 800 + Math.random() * 600);
+    }
+    // Show final-turn toast for the local human player
+    if (G.phase === 'lastTurns' && G.players[G.currentTurn]?.isLocalPlayer) {
+      showToast('Final turn! Draw then discard.');
+    }
+    return;
+  }
+
+  if (anim.type === 'deal') {
+    withAnimation(done => {
+      playDealAnimation(anim.count, anim.startingPlayer, () => {
+        renderGame();
+        if (isLocalHost && G.players[G.currentTurn]?.isBot) {
+          setTimeout(doBotTurn, 1200);
+        }
+        done();
+      });
+    });
+    return;
+  }
+
+  if (anim.type === 'draw') {
+    const actor = G.players.find(p => p.id === anim.actorId);
+    if (!actor) { renderGame(); return; }
+
+    const fromEl = anim.fromDiscard
+      ? document.getElementById('discard-drop-target')
+      : document.getElementById('draw-pile-visual');
+    const toEl = actor.isLocalPlayer
+      ? document.getElementById('player-hand')
+      : document.getElementById('opp-cards-' + actor.id);
+
+    if (!fromEl || !toEl) { renderGame(); return; }
+
+    renderPiles();
+    withAnimation(done => {
+      // Show face-up for local player drawing from discard, face-down otherwise
+      const faceUp = actor.isLocalPlayer && anim.fromDiscard;
+      animateCardDraw(fromEl, toEl, faceUp, anim.card, () => {
+        renderGame();
+        done();
+      });
+    });
+    return;
+  }
+
+  if (anim.type === 'discard') {
+    const actor = G.players.find(p => p.id === anim.actorId);
+    if (!actor) { renderGame(); return; }
+
+    const afterAnim = (done) => {
+      renderGame();
+      done();
+      if (!isLocalHost) return;
+      const next = G.players[G.currentTurn];
+      if (!next) return;
+      if (next.isBot) {
+        setTimeout(doBotTurn, 800 + Math.random() * 600);
+      } else if (G.phase === 'lastTurns' && next.isLocalPlayer) {
+        showToast('Final turn! Draw then discard.');
+      }
+    };
+
+    // Actor already rendered optimistically — just run afterAnim logic for them
+    if (actor.isLocalPlayer) { afterAnim(() => {}); return; }
+
+    const fromEl = document.getElementById('opp-cards-' + actor.id);
+    const toEl = document.getElementById('discard-drop-target');
+    if (!fromEl || !toEl) { afterAnim(() => {}); return; }
+
+    withAnimation(done => {
+      animateCardDraw(fromEl, toEl, true, anim.card, () => afterAnim(done));
+    });
+    return;
+  }
+
+  if (anim.type === 'goOut') {
+    const actor = G.players.find(p => p.id === anim.actorId);
+    if (actor) showWentOut(actor.name);
+
+    const afterAnim = (done) => {
+      renderGame();
+      done();
+      if (actor?.isLocalPlayer) flipRevealPlayerHand(300);
+      if (isLocalHost) setTimeout(beginLastTurns, 1500);
+    };
+
+    // Actor already rendered optimistically (showWentOut + flipReveal already ran locally)
+    if (actor?.isLocalPlayer) { afterAnim(() => {}); return; }
+
+    const fromEl = document.getElementById('opp-cards-' + actor.id);
+    const toEl = document.getElementById('discard-drop-target');
+    withAnimation(done => {
+      if (fromEl && toEl) {
+        animateCardDraw(fromEl, toEl, true, anim.card, () => afterAnim(done));
+      } else {
+        afterAnim(done);
+      }
+    });
+    return;
+  }
+
   renderGame();
+}
+
+// Visual-only deal animation for non-host clients.
+// Hands are already populated in G.players; this just flies face-down cards
+// from the deck area to each player's area for the visual effect.
+function playDealAnimation(count, startingPlayer, callback) {
+  const dealScreen = document.getElementById('dealing-screen');
+  dealScreen.classList.add('show');
+  document.getElementById('dealing-status').textContent =
+    `Round ${G.round}  ·  Dealing ${count} card${count > 1 ? 's' : ''} each...`;
+
+  showScreen('game-screen');
+  renderLayout();
+  renderPiles();
+
+  // Temporarily clear hands visually so we can re-add them one by one
+  const savedHands = G.players.map(p => [...p.hand]);
+  G.players.forEach(p => { p.hand = []; });
+  renderPlayerHand();
+  renderOpponentCards();
+
+  const totalCards = count * G.players.length;
+  const delayBetween = totalCards <= 12 ? 200 : totalCards <= 20 ? 160 : 130;
+  let dealIdx = 0;
+  let playerIdx = startingPlayer;
+
+  function getDeckCenter() {
+    const el = document.getElementById('draw-pile-visual');
+    if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  function getTargetCenter(pIdx) {
+    const p = G.players[pIdx];
+    if (p.isLocalPlayer) {
+      const hand = document.getElementById('player-hand');
+      if (!hand) return getDeckCenter();
+      const r = hand.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    } else {
+      const el = document.getElementById('opp-cards-' + p.id);
+      if (!el) return getDeckCenter();
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+  }
+
+  const dealCounts = new Array(G.players.length).fill(0);
+
+  function flyOne(pIdx, done) {
+    const origin = getDeckCenter();
+    const target = getTargetCenter(pIdx);
+    const flying = document.createElement('div');
+    flying.className = 'card face-down';
+    flying.style.cssText = `
+      position:fixed; width:64px; height:94px;
+      left:${origin.x - 28}px; top:${origin.y - 41}px;
+      z-index:9998; pointer-events:none; transition:none;
+      border-radius:7px; box-shadow:0 6px 20px rgba(0,0,0,0.55);
+    `;
+    document.body.appendChild(flying);
+    flying.getBoundingClientRect();
+    flying.style.transition = 'transform 0.28s cubic-bezier(0.25,0.8,0.4,1), opacity 0.28s ease';
+    flying.style.transform = `translate(${target.x - origin.x}px, ${target.y - origin.y}px) scale(0.88)`;
+    flying.style.opacity = '0.92';
+    setTimeout(() => {
+      document.body.removeChild(flying);
+      // Push the next card for this player from their saved hand
+      const cardIdx = dealCounts[pIdx];
+      const card = savedHands[pIdx][cardIdx];
+      dealCounts[pIdx]++;
+      if (card) {
+        G.players[pIdx].hand.push(card);
+        if (G.players[pIdx].isLocalPlayer) renderPlayerHand();
+        else renderOpponentCards();
+      }
+      done();
+    }, 290);
+  }
+
+  function dealNext() {
+    if (dealIdx >= totalCards) {
+      dealScreen.classList.remove('show');
+      callback();
+      return;
+    }
+    const pIdx = playerIdx;
+    playerIdx = (playerIdx + 1) % G.players.length;
+    dealIdx++;
+    flyOne(pIdx, () => setTimeout(dealNext, delayBetween));
+  }
+
+  setTimeout(dealNext, 350);
 }
 
 function startMultiplayerGame(data, myIdx) {
@@ -481,22 +805,33 @@ function startRound() {
   renderOpponentCards();
   renderPiles();
 
-  dealCardsAnimated(cardsToDeal, () => {
+  if (!G.botGame) {
+    // Deal all cards into hands first so the pushed state is complete.
+    // playDealAnimation on each client will visually replay the deal card-by-card.
+    for (let i = 0; i < cardsToDeal; i++) {
+      for (let j = 0; j < G.players.length; j++) {
+        const pIdx = (G.startingPlayer + j) % G.players.length;
+        if (G.deck.length > 0) G.players[pIdx].hand.push(G.deck.pop());
+      }
+    }
     if (G.deck.length > 0) {
       G.discardPile.push(G.deck.pop());
     }
     G.dealing = false;
-    renderGame();
-
-    if (!G.botGame) {
-      pushGameState();
-      attachGameListener();
-    }
-
-    if (G.players[G.currentTurn].isBot) {
-      setTimeout(doBotTurn, 1200);
-    }
-  });
+    attachGameListener();
+    pushGameState({ type: 'deal', count: cardsToDeal, startingPlayer: G.startingPlayer });
+  } else {
+    dealCardsAnimated(cardsToDeal, () => {
+      if (G.deck.length > 0) {
+        G.discardPile.push(G.deck.pop());
+      }
+      G.dealing = false;
+      renderGame();
+      if (G.players[G.currentTurn].isBot) {
+        setTimeout(doBotTurn, 1200);
+      }
+    });
+  }
 }
 
 // ========================
@@ -504,6 +839,13 @@ function startRound() {
 // ========================
 function drawFromDeck() {
   if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns')) return;
+
+  if (!G.botGame) {
+    // Send action to host; host picks the card, pushes state+anim for everyone
+    sendAction({ type: 'drawFromDeck', actorId: G.players[G.localPlayerIdx].id });
+    return;
+  }
+
   if (G.deck.length === 0) {
     const top = G.discardPile.pop();
     G.deck = shuffle([...G.discardPile]);
@@ -532,6 +874,11 @@ function drawFromDeck() {
 function drawFromDiscard() {
   if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns')) return;
   if (G.discardPile.length === 0) { showToast('Discard pile is empty!'); return; }
+
+  if (!G.botGame) {
+    sendAction({ type: 'drawFromDiscard', actorId: G.players[G.localPlayerIdx].id });
+    return;
+  }
 
   const card = G.discardPile.pop();
   G.drawnCard = card;
@@ -585,13 +932,31 @@ function confirmDiscard() {
   if (!card) return;
 
   clearDiscardPreview();
+
+  if (!G.botGame) {
+    // For non-host players: optimistic local update is fine because processAction
+    // runs on the host's separate G copy.
+    // For the host: sendAction calls processAction synchronously on the same G,
+    // so we must NOT pre-mutate — let processAction do it.
+    if (!isLocalHost) {
+      localPlayer.hand.splice(G.selectedCardIdx, 1);
+      G.discardPile.push(card);
+      G.drawnCard = null;
+      G.selectedCardIdx = -1;
+      renderGame();
+    } else {
+      G.selectedCardIdx = -1;
+    }
+    sendAction({ type: 'discard', actorId: localPlayer.id, card });
+    return;
+  }
+
   localPlayer.hand.splice(G.selectedCardIdx, 1);
   G.discardPile.push(card);
   G.drawnCard = null;
   G.selectedCardIdx = -1;
   advanceTurn();
   renderGame();
-  pushGameState();
 }
 
 function undoDiscard() {
@@ -641,11 +1006,35 @@ function tryGoOut() {
 
   clearDiscardPreview();
   const card = localPlayer.hand[discardIdx];
+
+  if (!G.botGame) {
+    // Send action to host first — host is the authority that mutates G.
+    // Non-host players get optimistic local feedback; host waits for applyRemoteState.
+    G.selectedCardIdx = -1;
+    sendAction({ type: 'goOut', actorId: localPlayer.id, card });
+
+    if (!isLocalHost) {
+      // Optimistic local update for non-host players so UI is responsive
+      localPlayer.hand.splice(discardIdx, 1);
+      G.discardPile.push(card);
+      G.drawnCard = null;
+      localPlayer.wentOut = true;
+      localPlayer.finishedLastTurn = true;
+      G.revealedSet.add('local_hand');
+      localPlayer.hand.forEach(c => c.faceDown = false);
+      G.phase = 'lastTurns';
+      G.lastTurnCount = 0;
+      renderGame();
+      flipRevealPlayerHand(300);
+    }
+    return;
+  }
+
+  // Bot game — mutate and animate locally
   localPlayer.hand.splice(discardIdx, 1);
   G.discardPile.push(card);
   G.drawnCard = null;
   G.selectedCardIdx = -1;
-
   localPlayer.wentOut = true;
   localPlayer.finishedLastTurn = true;
   G.revealedSet.add('local_hand');
@@ -653,10 +1042,8 @@ function tryGoOut() {
   G.lastTurnPlayer = G.currentTurn;
   G.phase = 'lastTurns';
   G.lastTurnCount = 0;
-
   showWentOut(localPlayer.name);
   renderGame();
-  pushGameState();
   flipRevealPlayerHand(300);
   setTimeout(beginLastTurns, 1500);
 }
@@ -742,8 +1129,8 @@ function scoreHand(hand) {
 
   function tryScore(remaining) {
     const baseScore = remaining.reduce((sum, c) => {
-      if (isWild(c)) return sum + 20;
       if (c.isJoker) return sum + 50;
+      if (isWild(c)) return sum + 20;
       return sum + cardValue(c.val);
     }, 0);
     minScore = Math.min(minScore, baseScore);
@@ -777,6 +1164,9 @@ function advanceTurn() {
   G.currentTurn = (G.currentTurn + 1) % G.players.length;
   G.drawnCard = null;
 
+  // In multiplayer, applyRemoteState handles rendering and bot scheduling
+  if (!G.botGame) return;
+
   if (G.players[G.currentTurn].isBot) {
     renderGame();
     setTimeout(doBotTurn, 800 + Math.random() * 600);
@@ -788,7 +1178,6 @@ function advanceTurn() {
 function advanceTurnAfterGoOut() {
   G.players[G.currentTurn].finishedLastTurn = true;
   G.players[G.currentTurn].hand.forEach(c => c.faceDown = false);
-  renderGame();
   G.lastTurnCount++;
 
   const othersCount = G.players.length - 1;
@@ -802,6 +1191,9 @@ function advanceTurnAfterGoOut() {
   } while (G.players[G.currentTurn].wentOut);
 
   G.drawnCard = null;
+
+  // In multiplayer, applyRemoteState handles rendering and bot scheduling
+  if (!G.botGame) return;
 
   if (G.players[G.currentTurn].isBot) {
     renderGame();
@@ -821,6 +1213,12 @@ function beginLastTurns() {
   } while (G.players[G.currentTurn].wentOut);
 
   G.drawnCard = null;
+
+  if (!G.botGame) {
+    // Push updated turn state; applyRemoteState will handle bot scheduling / toast
+    pushGameState(null);
+    return;
+  }
 
   if (G.players[G.currentTurn].isBot) {
     renderGame();
@@ -866,49 +1264,87 @@ function doBotTurn() {
 
   function afterDraw() {
     if (drawnCard) bot.hand.push(drawnCard);
-    renderGame();
 
-    if (G.phase !== 'lastTurns') {
-      for (let i = 0; i < bot.hand.length; i++) {
-        const remaining = bot.hand.filter((_, idx) => idx !== i);
-        if (isValidHand(remaining)) {
-          const goOutDiscard = bot.hand.splice(i, 1)[0];
-          G.discardPile.push(goOutDiscard);
-          bot.wentOut = true;
-          bot.finishedLastTurn = true;
-          G.lastTurnPlayer = G.currentTurn;
-          G.phase = 'lastTurns';
-          G.lastTurnCount = 0;
-          showWentOut(bot.name);
-          renderGame();
-          setTimeout(beginLastTurns, 1500);
-          return;
+    if (!G.botGame) {
+      // Push immediately — Firebase triggers draw animation on all clients at once
+      pushGameState({ type: 'draw', actorId: bot.id, fromDiscard: fromDiscardPile, card: drawnCard });
+
+      if (G.phase !== 'lastTurns') {
+        for (let i = 0; i < bot.hand.length; i++) {
+          const remaining = bot.hand.filter((_, idx) => idx !== i);
+          if (isValidHand(remaining)) {
+            const goOutDiscard = bot.hand.splice(i, 1)[0];
+            G.discardPile.push(goOutDiscard);
+            bot.wentOut = true;
+            bot.finishedLastTurn = true;
+            G.lastTurnPlayer = G.currentTurn;
+            G.phase = 'lastTurns';
+            G.lastTurnCount = 0;
+            // Delay goOut push slightly so clients finish the draw animation first
+            setTimeout(() => {
+              pushGameState({ type: 'goOut', actorId: bot.id, card: goOutDiscard });
+            }, 700);
+            return;
+          }
         }
       }
-    }
 
-    setTimeout(() => {
-      const discardIdx = botChooseDiscard(bot.hand);
-      const discarded = bot.hand.splice(discardIdx, 1)[0];
-
-      const fromEl2 = document.getElementById('opp-cards-' + bot.id);
-      const toEl2   = document.getElementById('discard-drop-target');
-
-      function afterDiscard() {
+      setTimeout(() => {
+        const discardIdx = botChooseDiscard(bot.hand);
+        const discarded = bot.hand.splice(discardIdx, 1)[0];
         G.discardPile.push(discarded);
         advanceTurn();
-        pushGameState();
+        pushGameState({ type: 'discard', actorId: bot.id, card: discarded });
+      }, 700);
+
+    } else {
+      // Bot-only game: use local animations as before
+      renderGame();
+
+      if (G.phase !== 'lastTurns') {
+        for (let i = 0; i < bot.hand.length; i++) {
+          const remaining = bot.hand.filter((_, idx) => idx !== i);
+          if (isValidHand(remaining)) {
+            const goOutDiscard = bot.hand.splice(i, 1)[0];
+            G.discardPile.push(goOutDiscard);
+            bot.wentOut = true;
+            bot.finishedLastTurn = true;
+            G.lastTurnPlayer = G.currentTurn;
+            G.phase = 'lastTurns';
+            G.lastTurnCount = 0;
+            showWentOut(bot.name);
+            renderGame();
+            setTimeout(beginLastTurns, 1500);
+            return;
+          }
+        }
       }
 
-      if (fromEl2 && toEl2) {
-        animateCardDraw(fromEl2, toEl2, true, discarded, afterDiscard);
-      } else {
-        afterDiscard();
-      }
-    }, 600);
+      setTimeout(() => {
+        const discardIdx = botChooseDiscard(bot.hand);
+        const discarded = bot.hand.splice(discardIdx, 1)[0];
+
+        const fromEl2 = document.getElementById('opp-cards-' + bot.id);
+        const toEl2   = document.getElementById('discard-drop-target');
+
+        function afterDiscard() {
+          G.discardPile.push(discarded);
+          advanceTurn();
+        }
+
+        if (fromEl2 && toEl2) {
+          animateCardDraw(fromEl2, toEl2, true, discarded, afterDiscard);
+        } else {
+          afterDiscard();
+        }
+      }, 600);
+    }
   }
 
-  if (fromEl && toEl && drawnCard) {
+  if (!G.botGame) {
+    // Multiplayer: no local animation, just compute and push
+    afterDraw();
+  } else if (fromEl && toEl && drawnCard) {
     animateCardDraw(fromEl, toEl, false, drawnCard, afterDraw);
   } else {
     afterDraw();

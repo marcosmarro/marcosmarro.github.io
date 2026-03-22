@@ -595,11 +595,12 @@ function dealCardsAnimated(count, callback) {
     const cardData = G.deck.pop();
     const pIdx = playerIdx;
 
-    flyCard(pIdx, cardData, dealIdx, () => {});
-
     playerIdx = (playerIdx + 1) % G.players.length;
     dealIdx++;
-    setTimeout(dealNext, delayBetween);
+
+    flyCard(pIdx, cardData, dealIdx, () => {
+      setTimeout(dealNext, delayBetween);
+    });
   }
 
   setTimeout(dealNext, 350);
