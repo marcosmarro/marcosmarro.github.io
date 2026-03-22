@@ -20,6 +20,7 @@ let G = {
   dealing: false,
   discardDropHighlight: false,
   revealedSet: new Set(),
+  previewCard: null,   // card being previewed for discard by current player
 };
 
 // Queues the latest remote state while an animation is playing,
@@ -380,34 +381,38 @@ function pushGameState(anim) {
     drawnCard:       G.drawnCard,
     drawnFromDiscard: G.drawnFromDiscard,
     gameOver:        G.gameOver,
+    previewCard:     G.previewCard || null,
     anim:            anim || null,
     ts:              Date.now(),
   };
   fbGameRef.set(state);
 }
 
-// Non-host players write actions here; host processes them.
-// Host calls processAction() directly (no Firebase round-trip needed).
+// Non-host players write actions here; host processes them in order.
+// Uses a push-queue so rapid actions (e.g. preview then discard) are never overwritten.
 function sendAction(action) {
   if (G.botGame) return;
   if (isLocalHost) {
     processAction(action);
   } else {
-    fbGameRef.child('pendingAction').set({ ...action, ts: Date.now() });
+    fbGameRef.child('actionQueue').push({ ...action, ts: Date.now() });
   }
 }
 
 let fbActionListener = null;
 function attachActionListener() {
   if (!fbGameRef || !isLocalHost) return;
-  const ref = fbGameRef.child('pendingAction');
-  if (fbActionListener) ref.off('value', fbActionListener);
-  fbActionListener = ref.on('value', snap => {
+  const ref = fbGameRef.child('actionQueue');
+  if (fbActionListener) ref.off('child_added', fbActionListener);
+  // Process each queued action as it arrives, then delete it
+  fbActionListener = ref.on('child_added', snap => {
     const action = snap.val();
     if (!action) return;
-    ref.remove(); // clear so it doesn't re-fire
+    snap.ref.remove();
     processAction(action);
   });
+  // Clear any leftover queue entries from a previous game
+  ref.once('value', snap => { if (snap.exists()) snap.ref.remove(); });
 }
 
 // Host-side: apply an incoming player action to G, push state + anim cue.
@@ -441,6 +446,18 @@ function processAction(action) {
     return;
   }
 
+  if (action.type === 'preview') {
+    G.previewCard = action.card;
+    pushGameState({ type: 'preview', actorId: action.actorId, card: action.card });
+    return;
+  }
+
+  if (action.type === 'undoPreview') {
+    G.previewCard = null;
+    pushGameState({ type: 'undoPreview', actorId: action.actorId });
+    return;
+  }
+
   if (action.type === 'discard') {
     const player = G.players.find(p => p.id === action.actorId);
     if (!player) return;
@@ -449,8 +466,10 @@ function processAction(action) {
     const card = player.hand.splice(cardIdx, 1)[0];
     G.discardPile.push(card);
     G.drawnCard = null;
+    const wasPreviewCard = G.previewCard;
+    G.previewCard = null;
     advanceTurn();
-    pushGameState({ type: 'discard', actorId: action.actorId, card });
+    pushGameState({ type: 'discard', actorId: action.actorId, card, wasPreviewCard: wasPreviewCard || null });
     return;
   }
 
@@ -524,6 +543,8 @@ function applyRemoteState(state) {
   G.gameOver       = state.gameOver       || false;
   G.dealing        = false;
   G.revealedSet    = new Set();
+  const prevPreviewCard = G.previewCard;
+  G.previewCard    = state.previewCard || null;
 
   // No anim cue — just render (e.g. round end, score updates, turn advance)
   if (!anim) {
@@ -578,6 +599,39 @@ function applyRemoteState(state) {
     return;
   }
 
+  if (anim.type === 'preview') {
+    // Observer: fly the card from the actor's hand area to the discard preview position
+    const actor = G.players.find(p => p.id === anim.actorId);
+    if (!actor || actor.isLocalPlayer) { renderGame(); return; }
+    const fromEl = document.getElementById('opp-cards-' + actor.id);
+    const toEl   = document.getElementById('discard-drop-target');
+    if (!fromEl || !toEl) { renderGame(); return; }
+    withAnimation(done => {
+      animateCardDraw(fromEl, toEl, true, anim.card, () => {
+        // Show the preview card hovering over the discard pile
+        renderGame();
+        done();
+      });
+    });
+    return;
+  }
+
+  if (anim.type === 'undoPreview') {
+    // Observer: fly the card back from discard area to the actor's hand area
+    const actor = G.players.find(p => p.id === anim.actorId);
+    if (!actor || actor.isLocalPlayer) { renderGame(); return; }
+    const fromEl = document.getElementById('discard-drop-target');
+    const toEl   = document.getElementById('opp-cards-' + actor.id);
+    if (!fromEl || !toEl) { renderGame(); return; }
+    withAnimation(done => {
+      animateCardDraw(fromEl, toEl, false, anim.card || {}, () => {
+        renderGame();
+        done();
+      });
+    });
+    return;
+  }
+
   if (anim.type === 'discard') {
     const actor = G.players.find(p => p.id === anim.actorId);
     if (!actor) { renderGame(); return; }
@@ -597,6 +651,11 @@ function applyRemoteState(state) {
 
     // Actor already rendered optimistically — just run afterAnim logic for them
     if (actor.isLocalPlayer) { afterAnim(() => {}); return; }
+
+    // Card was already previewed hovering over the discard pile — no need to re-fly it
+    const alreadyPreviewed = (anim.wasPreviewCard && anim.wasPreviewCard.id === anim.card.id)
+                          || (prevPreviewCard && prevPreviewCard.id === anim.card.id);
+    if (alreadyPreviewed) { afterAnim(() => {}); return; }
 
     const fromEl = document.getElementById('opp-cards-' + actor.id);
     const toEl = document.getElementById('discard-drop-target');
@@ -918,11 +977,19 @@ function tapCardToDiscard(cardIdx) {
       G.selectedCardIdx = -1;
       renderPlayerHand();
       flyCardToDiscardPreview(cardIdx);
+      if (!G.botGame) {
+        const card = G.players[G.localPlayerIdx].hand[cardIdx];
+        if (card) sendAction({ type: 'preview', actorId: G.players[G.localPlayerIdx].id, card });
+      }
     });
     return;
   }
 
   flyCardToDiscardPreview(cardIdx);
+  if (!G.botGame) {
+    const card = G.players[G.localPlayerIdx].hand[cardIdx];
+    if (card) sendAction({ type: 'preview', actorId: G.players[G.localPlayerIdx].id, card });
+  }
 }
 
 function confirmDiscard() {
@@ -968,6 +1035,9 @@ function undoDiscard() {
     updateActionButtons();
     updatePlayerLabel();
   });
+  if (!G.botGame) {
+    sendAction({ type: 'undoPreview', actorId: G.players[G.localPlayerIdx].id });
+  }
 }
 
 // ========================

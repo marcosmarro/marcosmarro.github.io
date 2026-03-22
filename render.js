@@ -430,6 +430,7 @@ function renderPiles() {
     discardDisplay.appendChild(placeholder);
   }
 
+  // Local player's own preview (driven by flyCardToDiscardPreview)
   if (hasPreview && G.selectedCardIdx >= 0) {
     const localPlayer = G.players[G.localPlayerIdx];
     const card = localPlayer.hand[G.selectedCardIdx];
@@ -446,6 +447,21 @@ function renderPiles() {
       `;
       discardDisplay.appendChild(preview);
     }
+  }
+
+  // Observer view: another player has previewed a card — show it hovering
+  if (!isMyTurn() && G.previewCard) {
+    const preview = createCardElement(G.previewCard, -1);
+    preview.id = 'discard-preview-card';
+    preview.className += ' large';
+    preview.style.cssText = `
+      position:absolute; top:0; left:0;
+      transform: rotate(3deg);
+      outline: 3px solid var(--gold);
+      box-shadow: 0 0 18px rgba(200,148,10,0.7), 0 4px 16px rgba(0,0,0,0.5);
+      z-index: 10;
+    `;
+    discardDisplay.appendChild(preview);
   }
 }
 
