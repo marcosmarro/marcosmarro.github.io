@@ -15,12 +15,16 @@ let G = {
   drawnCard: null,
   drawnFromDiscard: false,
   selectedCardIdx: -1,
+  selectedCardId: null,  // track selected card by ID (survives re-renders/reorders)
   botGame: true,
   gameOver: false,
   dealing: false,
   discardDropHighlight: false,
   revealedSet: new Set(),
   previewCard: null,   // card being previewed for discard by current player
+  // Stores the local player's custom hand order (card IDs in order) so drags
+  // survive Firebase state pushes without being reset to server order.
+  localHandOrder: null,
 };
 
 // Queues the latest remote state while an animation is playing,
@@ -369,6 +373,8 @@ function pushGameState(anim) {
       isBot:            p.isBot,
       wentOut:          p.wentOut,
       finishedLastTurn: p.finishedLastTurn,
+      // Include local hand order so other clients see revealed cards sorted correctly
+      handOrder:        p.isLocalPlayer ? (G.localHandOrder || p.hand.map(c => c.id)) : (p.handOrder || null),
     })),
     deck:            G.deck,
     discardPile:     G.discardPile,
@@ -419,6 +425,24 @@ function attachActionListener() {
 function processAction(action) {
   if (!isLocalHost) return;
 
+  if (action.type === 'sortHand') {
+    const player = G.players.find(p => p.id === action.actorId);
+    if (!player || !action.handOrder) return;
+    // Reorder the player's hand on the host to match their local sort
+    const ordered = [];
+    action.handOrder.forEach(id => {
+      const c = player.hand.find(c => c.id === id);
+      if (c) ordered.push(c);
+    });
+    player.hand.forEach(c => {
+      if (!action.handOrder.includes(c.id)) ordered.push(c);
+    });
+    player.hand = ordered;
+    player.handOrder = action.handOrder;
+    pushGameState(null);
+    return;
+  }
+
   if (action.type === 'drawFromDeck') {
     if (G.deck.length === 0) {
       const top = G.discardPile.pop();
@@ -462,8 +486,8 @@ function processAction(action) {
     const player = G.players.find(p => p.id === action.actorId);
     if (!player) return;
     const cardIdx = player.hand.findIndex(c => c.id === action.card.id);
-    if (cardIdx < 0) return;
-    const card = player.hand.splice(cardIdx, 1)[0];
+    // Card may already be removed from hand if the local host player used flyCardToDiscardPreview
+    const card = cardIdx >= 0 ? player.hand.splice(cardIdx, 1)[0] : action.card;
     G.discardPile.push(card);
     G.drawnCard = null;
     const wasPreviewCard = G.previewCard;
@@ -477,8 +501,8 @@ function processAction(action) {
     const player = G.players.find(p => p.id === action.actorId);
     if (!player) return;
     const cardIdx = player.hand.findIndex(c => c.id === action.card.id);
-    if (cardIdx < 0) return;
-    const card = player.hand.splice(cardIdx, 1)[0];
+    // Card may already be removed from hand if the local host player used flyCardToDiscardPreview
+    const card = cardIdx >= 0 ? player.hand.splice(cardIdx, 1)[0] : action.card;
     G.discardPile.push(card);
     G.drawnCard = null;
     player.wentOut = true;
@@ -528,6 +552,49 @@ function applyRemoteState(state) {
   const newLocalIdx = players.findIndex(p => p.isLocalPlayer);
   if (newLocalIdx >= 0) G.localPlayerIdx = newLocalIdx;
 
+  // Preserve the local player's custom hand order across Firebase pushes.
+  // The server stores canonical hand order but we keep a local ordering so
+  // drag-reorders are not reset every time the host pushes state.
+  const localIncoming = players[newLocalIdx >= 0 ? newLocalIdx : G.localPlayerIdx];
+  if (localIncoming) {
+    // If the player has a card in the preview area (removed from hand client-side),
+    // strip it from the server hand so the optimistic removal isn't undone.
+    if (previewRemovedCard) {
+      localIncoming.hand = localIncoming.hand.filter(c => c.id !== previewRemovedCard.id);
+    }
+
+    if (G.localHandOrder && G.localHandOrder.length > 0) {
+      const serverCards = localIncoming.hand;
+      const ordered = [];
+      // Place cards in local order first
+      G.localHandOrder.forEach(id => {
+        const c = serverCards.find(c => c.id === id);
+        if (c) ordered.push(c);
+      });
+      // Append any new cards (just drawn) that aren't in our saved order
+      serverCards.forEach(c => {
+        if (!G.localHandOrder.includes(c.id)) ordered.push(c);
+      });
+      localIncoming.hand = ordered;
+    }
+  }
+
+  // Apply handOrder for non-local players so revealed hands show in the player's sorted order
+  players.forEach(p => {
+    if (!p.isLocalPlayer && p.handOrder && p.handOrder.length > 0) {
+      const ordered = [];
+      p.handOrder.forEach(id => {
+        const c = p.hand.find(c => c.id === id);
+        if (c) ordered.push(c);
+      });
+      // Append any cards not covered by handOrder
+      p.hand.forEach(c => {
+        if (!p.handOrder.includes(c.id)) ordered.push(c);
+      });
+      p.hand = ordered;
+    }
+  });
+
   const anim = state.anim || null;
 
   // Apply all non-visual state first
@@ -547,6 +614,16 @@ function applyRemoteState(state) {
   G.revealedSet    = new Set();
   const prevPreviewCard = G.previewCard;
   G.previewCard    = state.previewCard || null;
+
+  // Re-sync selectedCardIdx from the stable card ID (survives hand reorders)
+  if (G.selectedCardId !== null) {
+    const localPlayer = G.players[G.localPlayerIdx];
+    if (localPlayer) {
+      const idx = localPlayer.hand.findIndex(c => c.id === G.selectedCardId);
+      G.selectedCardIdx = idx; // -1 if card was removed (discarded)
+      if (idx < 0) G.selectedCardId = null;
+    }
+  }
 
   // No anim cue — just render (e.g. round end, score updates, turn advance)
   if (!anim) {
@@ -860,8 +937,12 @@ function startRound() {
   G.drawnCard = null;
   G.drawnFromDiscard = false;
   G.selectedCardIdx = -1;
+  G.selectedCardId = null;
   G.gameOver = false;
   G.dealing = true;
+  G.localHandOrder = null;
+  // Reset render-side preview state (previewRemovedCard lives in render.js)
+  if (typeof resetPreviewState === 'function') resetPreviewState();
 
   const cardsToDeal = G.round + 2;
 
@@ -982,10 +1063,12 @@ function tapCardToDiscard(cardIdx) {
   if (G.selectedCardIdx >= 0) {
     flyCardBackToHand(G.selectedCardIdx, () => {
       G.selectedCardIdx = -1;
+      G.selectedCardId = null;
       renderPlayerHand();
       flyCardToDiscardPreview(cardIdx);
       if (!G.botGame) {
-        const card = G.players[G.localPlayerIdx].hand[cardIdx];
+        // Card was just removed from hand by flyCardToDiscardPreview — use previewRemovedCard
+        const card = previewRemovedCard;
         if (card) sendAction({ type: 'preview', actorId: G.players[G.localPlayerIdx].id, card });
       }
     });
@@ -994,50 +1077,74 @@ function tapCardToDiscard(cardIdx) {
 
   flyCardToDiscardPreview(cardIdx);
   if (!G.botGame) {
-    const card = G.players[G.localPlayerIdx].hand[cardIdx];
+    // Card was just removed from hand by flyCardToDiscardPreview — use previewRemovedCard
+    const card = previewRemovedCard;
     if (card) sendAction({ type: 'preview', actorId: G.players[G.localPlayerIdx].id, card });
   }
 }
 
 function confirmDiscard() {
-  if (!isMyTurn() || G.drawnCard === null || G.selectedCardIdx < 0) return;
+  if (!isMyTurn() || G.drawnCard === null) return;
   const localPlayer = G.players[G.localPlayerIdx];
-  const card = localPlayer.hand[G.selectedCardIdx];
+  let card = null;
+  let resolvedIdx = -1;
+
+  if (previewRemovedCard) {
+    // Card was already removed from hand by flyCardToDiscardPreview — don't splice again
+    card = previewRemovedCard;
+    resolvedIdx = -1; // already out of hand
+  } else if (G.selectedCardId !== null) {
+    resolvedIdx = localPlayer.hand.findIndex(c => c.id === G.selectedCardId);
+    if (resolvedIdx >= 0) card = localPlayer.hand[resolvedIdx];
+  } else if (G.selectedCardIdx >= 0) {
+    resolvedIdx = G.selectedCardIdx;
+    card = localPlayer.hand[resolvedIdx];
+  }
+
   if (!card) return;
 
   clearDiscardPreview();
 
   if (!G.botGame) {
-    // For non-host players: optimistic local update is fine because processAction
-    // runs on the host's separate G copy.
-    // For the host: sendAction calls processAction synchronously on the same G,
-    // so we must NOT pre-mutate — let processAction do it.
     if (!isLocalHost) {
-      localPlayer.hand.splice(G.selectedCardIdx, 1);
+      // Only splice if the card is still in the hand (wasn't already removed by preview)
+      if (resolvedIdx >= 0) localPlayer.hand.splice(resolvedIdx, 1);
       G.discardPile.push(card);
       G.drawnCard = null;
       G.selectedCardIdx = -1;
+      G.selectedCardId = null;
+      previewRemovedCard = null;
+      previewRemovedIdx = null;
+      G.localHandOrder = localPlayer.hand.map(c => c.id);
       renderGame();
     } else {
+      // Host: processAction will splice on its own copy — just clear local UI state
       G.selectedCardIdx = -1;
+      G.selectedCardId = null;
+      previewRemovedCard = null;
+      previewRemovedIdx = null;
     }
     sendAction({ type: 'discard', actorId: localPlayer.id, card });
     return;
   }
 
-  localPlayer.hand.splice(G.selectedCardIdx, 1);
+  // Bot game: only splice if card is still in the hand
+  if (resolvedIdx >= 0) localPlayer.hand.splice(resolvedIdx, 1);
   G.discardPile.push(card);
   G.drawnCard = null;
   G.selectedCardIdx = -1;
+  G.selectedCardId = null;
+  previewRemovedCard = null;
+  previewRemovedIdx = null;
   advanceTurn();
   renderGame();
 }
 
 function undoDiscard() {
-  if (!isMyTurn() || G.selectedCardIdx < 0) return;
-  const idx = G.selectedCardIdx;
-  flyCardBackToHand(idx, () => {
+  if (!isMyTurn() || (G.selectedCardId === null && !previewRemovedCard)) return;
+  flyCardBackToHand(() => {
     G.selectedCardIdx = -1;
+    G.selectedCardId = null;
     renderPlayerHand();
     updateActionButtons();
     updatePlayerLabel();
@@ -1050,8 +1157,7 @@ function undoDiscard() {
 // ========================
 // GO OUT
 // ========================
-function canPlayerGoOut(player) {
-  const hand = player.hand;
+function canPlayerGoOutHand(hand) {
   if (hand.length < 2) return false;
   for (let i = 0; i < hand.length; i++) {
     const remaining = hand.filter((_, idx) => idx !== i);
@@ -1060,62 +1166,100 @@ function canPlayerGoOut(player) {
   return false;
 }
 
+function canPlayerGoOut(player) {
+  return canPlayerGoOutHand(player.hand);
+}
+
 function tryGoOut() {
   const localPlayer = G.players[G.localPlayerIdx];
-  if (!canPlayerGoOut(localPlayer)) {
+
+  // Build the full hand including the previewed card (which was removed from hand array)
+  const fullHand = previewRemovedCard
+    ? [...localPlayer.hand, previewRemovedCard]
+    : localPlayer.hand;
+
+  if (!canPlayerGoOutHand(fullHand)) {
     showToast('❌ Cannot go out yet!', 2500);
     return;
   }
 
-  let discardIdx = G.selectedCardIdx >= 0 ? G.selectedCardIdx : -1;
-  if (discardIdx < 0) {
-    for (let i = 0; i < localPlayer.hand.length; i++) {
-      const remaining = localPlayer.hand.filter((_, idx) => idx !== i);
-      if (isValidHand(remaining)) { discardIdx = i; break; }
-    }
-  } else {
-    const remaining = localPlayer.hand.filter((_, idx) => idx !== discardIdx);
+  let card = null;
+  let discardIdx = -1;
+
+  if (previewRemovedCard) {
+    // Card already lifted out of hand — use it as the discard
+    card = previewRemovedCard;
+    const remaining = localPlayer.hand; // hand without the preview card
     if (!isValidHand(remaining)) {
       showToast('❌ That card cannot be your discard — pick another', 2500);
       return;
     }
+  } else if (G.selectedCardId !== null) {
+    discardIdx = localPlayer.hand.findIndex(c => c.id === G.selectedCardId);
+    if (discardIdx >= 0) {
+      const remaining = localPlayer.hand.filter((_, idx) => idx !== discardIdx);
+      if (!isValidHand(remaining)) {
+        showToast('❌ That card cannot be your discard — pick another', 2500);
+        return;
+      }
+      card = localPlayer.hand[discardIdx];
+    }
   }
 
+  if (!card) {
+    // Auto-pick the best discard from the full hand
+    for (let i = 0; i < fullHand.length; i++) {
+      const remaining = fullHand.filter((_, idx) => idx !== i);
+      if (isValidHand(remaining)) {
+        card = fullHand[i];
+        discardIdx = localPlayer.hand.findIndex(c => c.id === card.id);
+        break;
+      }
+    }
+  }
+
+  if (!card) return;
+
   clearDiscardPreview();
-  const card = localPlayer.hand[discardIdx];
 
   if (!G.botGame) {
-    // Always preview the discard card first so observers see it, then go out.
-    // If not already previewed, send preview now.
-    if (!G.previewCard || G.previewCard.id !== card.id) {
+    const alreadyPreviewed = previewRemovedCard && previewRemovedCard.id === card.id;
+    if (!alreadyPreviewed && (!G.previewCard || G.previewCard.id !== card.id)) {
       sendAction({ type: 'preview', actorId: localPlayer.id, card });
-      if (!isLocalHost) flyCardToDiscardPreview(discardIdx);
+      if (!isLocalHost && discardIdx >= 0) flyCardToDiscardPreview(discardIdx);
     }
     G.selectedCardIdx = -1;
+    G.selectedCardId = null;
     sendAction({ type: 'goOut', actorId: localPlayer.id, card });
 
     if (!isLocalHost) {
-      // Optimistic local update for non-host players so UI is responsive
-      localPlayer.hand.splice(discardIdx, 1);
+      // Card may already be removed from hand (previewRemovedCard path)
+      if (discardIdx >= 0) localPlayer.hand.splice(discardIdx, 1);
       G.discardPile.push(card);
       G.drawnCard = null;
+      previewRemovedCard = null;
+      previewRemovedIdx = null;
       localPlayer.wentOut = true;
       localPlayer.finishedLastTurn = true;
       G.revealedSet.add('local_hand');
       localPlayer.hand.forEach(c => c.faceDown = false);
       G.phase = 'lastTurns';
       G.lastTurnCount = 0;
+      G.localHandOrder = null;
       renderGame();
       flipRevealPlayerHand(300);
     }
     return;
   }
 
-  // Bot game — mutate and animate locally
-  localPlayer.hand.splice(discardIdx, 1);
+  // Bot game — card may already be removed from hand (previewRemovedCard path)
+  if (discardIdx >= 0) localPlayer.hand.splice(discardIdx, 1);
   G.discardPile.push(card);
   G.drawnCard = null;
   G.selectedCardIdx = -1;
+  G.selectedCardId = null;
+  previewRemovedCard = null;
+  previewRemovedIdx = null;
   localPlayer.wentOut = true;
   localPlayer.finishedLastTurn = true;
   G.revealedSet.add('local_hand');
@@ -1123,6 +1267,7 @@ function tryGoOut() {
   G.lastTurnPlayer = G.currentTurn;
   G.phase = 'lastTurns';
   G.lastTurnCount = 0;
+  G.localHandOrder = null;
   showWentOut(localPlayer.name);
   renderGame();
   flipRevealPlayerHand(300);
@@ -1587,6 +1732,20 @@ function sortPlayerHand() {
     if (b.isJoker) return -1;
     return cardNumericRank(a.val) - cardNumericRank(b.val);
   });
+  G.localHandOrder = localPlayer.hand.map(c => c.id);
+  // Re-sync index after sort
+  if (G.selectedCardId !== null) {
+    G.selectedCardIdx = localPlayer.hand.findIndex(c => c.id === G.selectedCardId);
+  }
+  // In multiplayer push a silent state update so other clients receive
+  // the new handOrder (visible when cards are revealed at round end)
+  if (!G.botGame) {
+    if (isLocalHost) {
+      pushGameState(null);
+    } else {
+      sendAction({ type: 'sortHand', actorId: G.players[G.localPlayerIdx].id, handOrder: G.localHandOrder });
+    }
+  }
   renderPlayerHand();
 }
 

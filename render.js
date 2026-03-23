@@ -109,7 +109,18 @@ function renderOpponentCards() {
       G.revealedSet.add(p.id);
     }
     const seat = el.dataset.seat || 'top';
-    const n = p.hand.length;
+    // When this opponent has a card hovering over the discard pile (preview),
+    // show one fewer card so their hand count stays accurate during the animation.
+    // Only subtract if the preview card is still actually in their hand — once
+    // processAction removes it, the hand is already the right size.
+    const isPreviewingDiscard = G.previewCard &&
+      G.players[G.currentTurn]?.id === p.id &&
+      !p.isLocalPlayer &&
+      p.hand.some(c => c.id === G.previewCard.id);
+    const displayHand = isPreviewingDiscard
+      ? p.hand.filter(c => c.id !== G.previewCard.id)
+      : p.hand;
+    const n = displayHand.length;
     if (n === 0) { el.style.cssText = 'width:0;height:0'; return; }
 
     const CW = 75, CH = 120;
@@ -129,7 +140,7 @@ function renderOpponentCards() {
       const ARC_R = 500;
       const angleDeg = 2;
       const topStartAngleDeg = ((n - 1) / 2) * angleDeg;
-      p.hand.forEach((card, idx) => {
+      displayHand.forEach((card, idx) => {
         const θDeg = topStartAngleDeg - idx * angleDeg;
         const θRad = θDeg * Math.PI / 180;
         const yOffset = -(ARC_R - ARC_R * Math.cos(θRad));
@@ -154,7 +165,7 @@ function renderOpponentCards() {
       const ARC_R = 500;
       const centerIdx = (n - 1) / 2;
 
-      p.hand.forEach((card, idx) => {
+      displayHand.forEach((card, idx) => {
         const fanAngle = sideStartAngle + idx * sideAngleStep;
         const div = createMiniCardElement(card, !revealed);
         const directedFan = isLeft ? fanAngle : -fanAngle;
@@ -186,7 +197,7 @@ function renderOpponentCards() {
       const cardDiag = Math.round(Math.sqrt(CW * CW + CH * CH));
       const containerSize = Math.max(rx, ry) + cardDiag + 8;
       el.style.cssText = `position:relative; overflow:visible; width:${containerSize}px; height:${containerSize}px;`;
-      p.hand.forEach((card, idx) => {
+      displayHand.forEach((card, idx) => {
         const dirAngle = startAngle + idx * angStep2;
         const dirRad = dirAngle * Math.PI / 180;
         const cardAngle = dirAngle + (isLeft2 ? 90 : -90);
@@ -227,9 +238,13 @@ function updatePlayerLabel() {
   const localPlayer = G.players[G.localPlayerIdx];
   if (!localPlayer) return;
 
-  const scoringHand = G.selectedCardIdx >= 0
-    ? localPlayer.hand.filter((_, i) => i !== G.selectedCardIdx)
-    : localPlayer.hand;
+  // When a card has been lifted to preview, it's removed from hand — score the remaining hand as-is
+  // (previewRemovedCard is not in hand, so hand already reflects the "if I discard this" scenario)
+  const scoringHand = previewRemovedCard
+    ? localPlayer.hand
+    : (G.selectedCardIdx >= 0
+        ? localPlayer.hand.filter((_, i) => i !== G.selectedCardIdx)
+        : localPlayer.hand);
   const roundScore = scoreHand(scoringHand);
   const isRoundEnd = G.phase === 'roundEnd';
 
@@ -289,7 +304,7 @@ function renderPlayerHand() {
     div.style.transformOrigin = 'bottom center';
     div.style.zIndex = idx + 1;
 
-    if (idx === G.selectedCardIdx && !dragState) div.style.opacity = '0';
+    if (idx === G.selectedCardIdx && !dragState && !previewRemovedCard) div.style.opacity = '0';
 
     if (!localPlayer.finishedLastTurn && G.phase !== 'roundEnd') {
       div.addEventListener('click', () => {
@@ -430,12 +445,12 @@ function renderPiles() {
     discardDisplay.appendChild(placeholder);
   }
 
-  // Local player's own preview (driven by flyCardToDiscardPreview)
-  if (hasPreview && G.selectedCardIdx >= 0) {
-    const localPlayer = G.players[G.localPlayerIdx];
-    const card = localPlayer.hand[G.selectedCardIdx];
-    if (card) {
-      const preview = createCardElement(card, -1);
+  // Local player's own preview: the card element is appended directly to discardDisplay
+  // by flyCardToDiscardPreview — we just re-append it if it exists and was cleared by innerHTML reset.
+  if (hasPreview && previewRemovedCard) {
+    const existing = document.getElementById('discard-preview-card');
+    if (!existing) {
+      const preview = createCardElement(previewRemovedCard, -1);
       preview.id = 'discard-preview-card';
       preview.className += ' large';
       preview.style.cssText = `
@@ -484,7 +499,8 @@ function updateActionButtons() {
   const localPlayer = G.players[G.localPlayerIdx];
   const myTurn = isMyTurn();
   const hasDrawn = G.drawnCard !== null;
-  const hasSelected = G.selectedCardIdx >= 0;
+  // A card is "selected" either via the old index path or via the new previewRemovedCard path
+  const hasSelected = G.selectedCardIdx >= 0 || previewRemovedCard !== null || G.selectedCardId !== null;
 
   const continueBtn = document.getElementById('continue-btn');
   continueBtn.disabled = !(myTurn && hasDrawn && hasSelected);
@@ -496,7 +512,10 @@ function updateActionButtons() {
   const someoneElseWentOut = G.players.some(p => p.wentOut && !p.isLocalPlayer);
   let canGoOut = false;
   if (myTurn && hasDrawn && hasSelected && !someoneElseWentOut) {
-    const remaining = localPlayer.hand.filter((_, i) => i !== G.selectedCardIdx);
+    // When previewRemovedCard is set, the hand already excludes the selected card
+    const remaining = previewRemovedCard
+      ? localPlayer.hand
+      : localPlayer.hand.filter((_, i) => i !== G.selectedCardIdx);
     canGoOut = isValidHand(remaining);
   }
   goOutBtn.disabled = !canGoOut;
@@ -663,6 +682,16 @@ function animateCardDraw(fromEl, toEl, faceUp, cardData, callback) {
   }, 500);
 }
 
+// Stores the card that has been visually "lifted" to the discard preview area
+// so it can be restored to the hand if the player undoes.
+let previewRemovedCard = null;
+let previewRemovedIdx = null;
+
+function resetPreviewState() {
+  previewRemovedCard = null;
+  previewRemovedIdx = null;
+}
+
 function flyCardToDiscardPreview(cardIdx) {
   const localPlayer = G.players[G.localPlayerIdx];
   const card = localPlayer.hand[cardIdx];
@@ -692,10 +721,21 @@ function flyCardToDiscardPreview(cardIdx) {
   `;
   document.body.appendChild(flyCard);
 
-  cardEl.style.opacity = '0';
-  G.selectedCardIdx = cardIdx;
+  // Remove card from hand immediately so drag-reorder won't show it.
+  // Store it so we can restore it on undo.
+  previewRemovedCard = localPlayer.hand.splice(cardIdx, 1)[0];
+  previewRemovedIdx  = cardIdx;
+  // Update localHandOrder to reflect removal
+  G.localHandOrder = localPlayer.hand.map(c => c.id);
+
+  // selectedCardIdx is now invalid (card removed), use -1 but keep selectedCardId
+  G.selectedCardIdx = -1;  // will resolve via ID
+  G.selectedCardId = previewRemovedCard.id;
   updateActionButtons();
   updatePlayerLabel();
+
+  // Re-render hand without the selected card
+  renderPlayerHand();
 
   flyCard.getBoundingClientRect();
 
@@ -708,7 +748,7 @@ function flyCardToDiscardPreview(cardIdx) {
   setTimeout(() => {
     document.body.removeChild(flyCard);
     clearDiscardPreview();
-    const preview = createCardElement(card, -1);
+    const preview = createCardElement(previewRemovedCard, -1);
     preview.id = 'discard-preview-card';
     preview.className += ' large';
     preview.style.cssText = `
@@ -732,17 +772,35 @@ function flyCardToDiscardPreview(cardIdx) {
 function flyCardBackToHand(cardIdx, callback) {
   clearDiscardPreview();
 
+  // Restore the removed card back into the hand at its original position
+  const localPlayer = G.players[G.localPlayerIdx];
+  if (previewRemovedCard) {
+    const restoreIdx = Math.min(previewRemovedIdx ?? localPlayer.hand.length, localPlayer.hand.length);
+    localPlayer.hand.splice(restoreIdx, 0, previewRemovedCard);
+    G.localHandOrder = localPlayer.hand.map(c => c.id);
+    previewRemovedCard = null;
+    previewRemovedIdx = null;
+  }
+
+  // Re-render so the card appears back in hand, then animate from discard area
+  renderPlayerHand();
+
   const hand = document.getElementById('player-hand');
-  const cardEls = hand.querySelectorAll('.card');
-  const cardEl = cardEls[cardIdx];
   const discardTarget = document.getElementById('discard-drop-target');
-  if (!cardEl || !discardTarget) { if (callback) callback(); return; }
+  if (!discardTarget) { if (callback) callback(); return; }
+
+  // Find the card element by its data-idx (which now corresponds to restored position)
+  const restoredIdx = G.selectedCardId !== null
+    ? localPlayer.hand.findIndex(c => c.id === G.selectedCardId)
+    : -1;
+  const cardEls = hand.querySelectorAll('.card');
+  const cardEl = restoredIdx >= 0 ? cardEls[restoredIdx] : null;
+
+  if (!cardEl) { if (callback) callback(); return; }
 
   const toRect   = cardEl.getBoundingClientRect();
   const fromRect = discardTarget.getBoundingClientRect();
-
-  const localPlayer = G.players[G.localPlayerIdx];
-  const card = localPlayer.hand[cardIdx];
+  const card = localPlayer.hand[restoredIdx];
 
   const flyCard = createCardElement(card, -1);
   flyCard.className += ' large';
@@ -760,6 +818,7 @@ function flyCardBackToHand(cardIdx, callback) {
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   `;
   document.body.appendChild(flyCard);
+  cardEl.style.opacity = '0';
 
   flyCard.getBoundingClientRect();
 
@@ -948,6 +1007,12 @@ function onDragEnd(e) {
     if (dropIdx !== sourceIdx) {
       const card = localPlayer.hand.splice(sourceIdx, 1)[0];
       localPlayer.hand.splice(Math.min(dropIdx, localPlayer.hand.length), 0, card);
+    }
+    // Persist the new order so Firebase pushes don't reset it
+    G.localHandOrder = localPlayer.hand.map(c => c.id);
+    // Re-sync selectedCardIdx from stable ID after reorder
+    if (G.selectedCardId !== null) {
+      G.selectedCardIdx = localPlayer.hand.findIndex(c => c.id === G.selectedCardId);
     }
   }
 
