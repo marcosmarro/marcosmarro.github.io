@@ -14,7 +14,12 @@ function renderGame() {
 
 function renderLayout() {
   const n = G.players.length;
-  const opponents = G.players.filter(p => !p.isLocalPlayer);
+  // Build opponents in clockwise order starting from the seat immediately to the
+  // left of the local player, so the board looks the same from every seat.
+  const opponents = [];
+  for (let i = 1; i < n; i++) {
+    opponents.push(G.players[(G.localPlayerIdx + i) % n]);
+  }
   const container = document.getElementById('opponent-areas-container');
   container.innerHTML = '';
 
@@ -165,7 +170,11 @@ function renderOpponentCards() {
       const ARC_R = 500;
       const centerIdx = (n - 1) / 2;
 
-      displayHand.forEach((card, idx) => {
+      // Right-side fans top→bottom — reverse so index 0 appears at the top,
+      // matching the reading order the player arranged their hand in.
+      const sideHand = isLeft ? displayHand : [...displayHand].reverse();
+
+      sideHand.forEach((card, idx) => {
         const fanAngle = sideStartAngle + idx * sideAngleStep;
         const div = createMiniCardElement(card, !revealed);
         const directedFan = isLeft ? fanAngle : -fanAngle;
@@ -197,7 +206,9 @@ function renderOpponentCards() {
       const cardDiag = Math.round(Math.sqrt(CW * CW + CH * CH));
       const containerSize = Math.max(rx, ry) + cardDiag + 8;
       el.style.cssText = `position:relative; overflow:visible; width:${containerSize}px; height:${containerSize}px;`;
-      displayHand.forEach((card, idx) => {
+      // corner-tr fans spread naturally; use displayHand order as-is
+      const cornerHand = displayHand;
+      cornerHand.forEach((card, idx) => {
         const dirAngle = startAngle + idx * angStep2;
         const dirRad = dirAngle * Math.PI / 180;
         const cardAngle = dirAngle + (isLeft2 ? 90 : -90);
