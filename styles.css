@@ -224,6 +224,11 @@ input:focus { border-color: var(--gold); }
 }
 .player-dot.empty { background: rgba(255,255,255,0.2); }
 
+.lobby-player-row.lobby-drag-over {
+  border: 1px solid var(--gold);
+  background: rgba(200,148,10,0.15);
+}
+
 .hint-text {
   font-size: 13px;
   color: rgba(255,255,255,0.5);

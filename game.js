@@ -240,9 +240,25 @@ function updateLobbyUI(data) {
     const p = players[i];
     const row = document.createElement('div');
     row.className = 'lobby-player-row';
-    row.innerHTML = `<div class="player-dot ${p ? '' : 'empty'}"></div>
-      <span style="font-size:14px">${p ? p.name : '<span style="color:rgba(255,255,255,0.3);font-style:italic">Open slot</span>'}</span>
-      ${p && p.isHost ? '<span style="margin-left:auto;font-size:11px;color:var(--gold)">HOST</span>' : ''}`;
+
+    if (p) {
+      const dragHandle = isLocalHost
+        ? `<span style="color:rgba(255,255,255,0.3);font-size:14px;cursor:grab;margin-right:2px;user-select:none">⠿</span>`
+        : '';
+      const badge = p.isHost ? `<span style="margin-left:auto;font-size:11px;color:var(--gold)">HOST</span>` : '';
+      row.innerHTML = `${dragHandle}<div class="player-dot"></div>
+        <span style="font-size:14px">${p.name}</span>${badge}`;
+      row.dataset.playerIdx = i;
+      if (isLocalHost) {
+        row.draggable = true;
+        row.style.cursor = 'grab';
+        attachLobbyRowDrag(row);
+      }
+    } else {
+      row.innerHTML = `<div class="player-dot empty"></div>
+        <span style="font-size:14px"><span style="color:rgba(255,255,255,0.3);font-style:italic">Open slot</span></span>`;
+    }
+
     list.appendChild(row);
   }
   const canStart = players.length >= 2;
@@ -254,6 +270,59 @@ function updateLobbyUI(data) {
   }
   document.getElementById('lobby-wait-msg').textContent =
     `${players.length}/6 players — ${canStart ? 'Ready to start!' : 'Need at least 2 players'}`;
+}
+
+let lobbyDragSrcIdx = null;
+
+function attachLobbyRowDrag(row) {
+  row.addEventListener('dragstart', e => {
+    lobbyDragSrcIdx = parseInt(row.dataset.playerIdx);
+    row.style.opacity = '0.4';
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  row.addEventListener('dragend', () => {
+    row.style.opacity = '';
+    document.querySelectorAll('.lobby-player-row').forEach(r => {
+      r.classList.remove('lobby-drag-over');
+    });
+  });
+
+  row.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const targetIdx = parseInt(row.dataset.playerIdx);
+    if (!isNaN(targetIdx) && targetIdx !== lobbyDragSrcIdx) {
+      row.classList.add('lobby-drag-over');
+    }
+  });
+
+  row.addEventListener('dragleave', () => {
+    row.classList.remove('lobby-drag-over');
+  });
+
+  row.addEventListener('drop', e => {
+    e.preventDefault();
+    row.classList.remove('lobby-drag-over');
+    const targetIdx = parseInt(row.dataset.playerIdx);
+    if (isNaN(targetIdx) || targetIdx === lobbyDragSrcIdx || lobbyDragSrcIdx === null) return;
+    reorderLobbyPlayer(lobbyDragSrcIdx, targetIdx);
+    lobbyDragSrcIdx = null;
+  });
+}
+
+function reorderLobbyPlayer(fromIdx, toIdx) {
+  if (!isLocalHost || !fbLobbyRef) return;
+  fbLobbyRef.get().then(snap => {
+    const data = snap.val();
+    if (!data) return;
+    const players = normalisePlayers(data.players);
+    if (fromIdx < 0 || fromIdx >= players.length) return;
+    if (toIdx  < 0 || toIdx  >= players.length) return;
+    const [moved] = players.splice(fromIdx, 1);
+    players.splice(toIdx, 0, moved);
+    fbLobbyRef.child('players').set(players);
+  });
 }
 
 function startLobbyGame() {
