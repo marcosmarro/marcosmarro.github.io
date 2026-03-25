@@ -274,7 +274,13 @@ function updateLobbyUI(data) {
 
 let lobbyDragSrcIdx = null;
 
+// ---- touch-drag state ----
+let lobbyTouchSrcIdx  = null;
+let lobbyTouchGhost   = null;
+let lobbyTouchOffsetY = 0;
+
 function attachLobbyRowDrag(row) {
+  // ── Mouse drag-and-drop (desktop) ──────────────────────────────────────
   row.addEventListener('dragstart', e => {
     lobbyDragSrcIdx = parseInt(row.dataset.playerIdx);
     row.style.opacity = '0.4';
@@ -309,6 +315,98 @@ function attachLobbyRowDrag(row) {
     reorderLobbyPlayer(lobbyDragSrcIdx, targetIdx);
     lobbyDragSrcIdx = null;
   });
+
+  // ── Touch drag (iOS / mobile) ───────────────────────────────────────────
+  row.addEventListener('touchstart', e => {
+    // Only handle touches on the drag handle (⠿) or the row itself
+    lobbyTouchSrcIdx = parseInt(row.dataset.playerIdx);
+    if (isNaN(lobbyTouchSrcIdx)) return;
+
+    const touch = e.touches[0];
+    const rect  = row.getBoundingClientRect();
+    lobbyTouchOffsetY = touch.clientY - rect.top;
+
+    // Build a visual ghost clone
+    lobbyTouchGhost = row.cloneNode(true);
+    const gs = lobbyTouchGhost.style;
+    gs.position   = 'fixed';
+    gs.left       = rect.left + 'px';
+    gs.top        = (touch.clientY - lobbyTouchOffsetY) + 'px';
+    gs.width      = rect.width + 'px';
+    gs.opacity    = '0.85';
+    gs.pointerEvents = 'none';
+    gs.zIndex     = '9999';
+    gs.boxShadow  = '0 8px 24px rgba(0,0,0,0.5)';
+    gs.borderRadius = '6px';
+    gs.transition = 'none';
+    document.body.appendChild(lobbyTouchGhost);
+
+    row.style.opacity = '0.3';
+    e.preventDefault(); // prevent scroll while dragging
+  }, { passive: false });
+
+  row.addEventListener('touchmove', e => {
+    if (lobbyTouchSrcIdx === null || !lobbyTouchGhost) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+
+    // Move ghost
+    lobbyTouchGhost.style.top = (touch.clientY - lobbyTouchOffsetY) + 'px';
+
+    // Highlight the row under the finger
+    document.querySelectorAll('.lobby-player-row').forEach(r => {
+      r.classList.remove('lobby-drag-over');
+    });
+    // Find which row the touch is over
+    const el = lobbyRowAtPoint(touch.clientX, touch.clientY);
+    if (el) {
+      const idx = parseInt(el.dataset.playerIdx);
+      if (!isNaN(idx) && idx !== lobbyTouchSrcIdx) {
+        el.classList.add('lobby-drag-over');
+      }
+    }
+  }, { passive: false });
+
+  row.addEventListener('touchend', e => {
+    if (lobbyTouchSrcIdx === null) return;
+
+    const touch = e.changedTouches[0];
+
+    // Clean up ghost
+    if (lobbyTouchGhost) { lobbyTouchGhost.remove(); lobbyTouchGhost = null; }
+    row.style.opacity = '';
+
+    document.querySelectorAll('.lobby-player-row').forEach(r => {
+      r.classList.remove('lobby-drag-over');
+    });
+
+    const el = lobbyRowAtPoint(touch.clientX, touch.clientY);
+    if (el) {
+      const targetIdx = parseInt(el.dataset.playerIdx);
+      if (!isNaN(targetIdx) && targetIdx !== lobbyTouchSrcIdx) {
+        reorderLobbyPlayer(lobbyTouchSrcIdx, targetIdx);
+      }
+    }
+    lobbyTouchSrcIdx = null;
+  });
+
+  row.addEventListener('touchcancel', () => {
+    if (lobbyTouchGhost) { lobbyTouchGhost.remove(); lobbyTouchGhost = null; }
+    row.style.opacity = '';
+    document.querySelectorAll('.lobby-player-row').forEach(r => r.classList.remove('lobby-drag-over'));
+    lobbyTouchSrcIdx = null;
+  });
+}
+
+/** Returns the .lobby-player-row element whose bounding rect contains (x, y), or null. */
+function lobbyRowAtPoint(x, y) {
+  // Hide ghost temporarily so elementFromPoint can see through it
+  if (lobbyTouchGhost) lobbyTouchGhost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (lobbyTouchGhost) lobbyTouchGhost.style.display = '';
+  if (!el) return null;
+  return el.closest('.lobby-player-row');
 }
 
 function reorderLobbyPlayer(fromIdx, toIdx) {
