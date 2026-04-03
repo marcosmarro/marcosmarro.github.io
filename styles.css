@@ -71,7 +71,7 @@ body::before {
 .game-title {
   font-family: 'Roboto', sans-serif;
   font-size: 42px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--gold);
   text-shadow: 0 2px 20px rgba(200,148,10,0.5), 0 0 40px rgba(200,148,10,0.2);
   letter-spacing: 4px;
@@ -196,7 +196,7 @@ input:focus { border-color: var(--gold); }
   text-align: center;
   font-family: 'Roboto', sans-serif;
   font-size: 36px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--gold);
   letter-spacing: 10px;
   background: rgba(0,0,0,0.4);
@@ -281,7 +281,7 @@ input:focus { border-color: var(--gold); }
 .opponent-name {
   position: absolute;
   font-family: 'Roboto', sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   color: rgba(255,255,255,0.7);
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -408,7 +408,7 @@ input:focus { border-color: var(--gold); }
 .cp.tl { top: 4px; left: 4px; }
 .cp.br { bottom: 4px; right: 4px; transform: rotate(180deg); }
 
-.cp-val { font-family: 'Roboto', sans-serif; font-weight: 600; line-height: 1; white-space: nowrap; color: #222; }
+.cp-val { font-family: 'Roboto', sans-serif; font-weight: 500; line-height: 1; white-space: nowrap; color: #222; }
 .cp-suit { line-height: 1; white-space: nowrap; color: #222; }
 
 /* Suit colors */
@@ -421,7 +421,7 @@ input:focus { border-color: var(--gold); }
 
 /* Joker vertical letters */
 .cp-joker { display: flex; flex-direction: column; line-height: 1; }
-.cp-joker span { font-family: 'Roboto', sans-serif; font-weight: 600; line-height: 1.1; display: block; }
+.cp-joker span { font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 12px; line-height: 1.1; display: block; }
 .jc-0 { color: #2d7a3a; }  /* J = clubs    = green  */
 .jc-1 { color: #c0392b; }  /* O = hearts   = red    */
 .jc-2 { color: #4a4a6a; }  /* K = spades   = slate  */
@@ -509,7 +509,7 @@ input:focus { border-color: var(--gold); }
 .action-btn {
   font-family: 'Roboto', sans-serif;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 1px;
   padding: 8px 6px;
   border-radius: 20px;
@@ -707,7 +707,7 @@ input:focus { border-color: var(--gold); }
   transform: translate(-50%, -50%);
   font-family: 'Roboto', sans-serif;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--gold);
   text-align: center;
   text-shadow: 0 0 30px rgba(200,148,10,0.8);
@@ -738,7 +738,7 @@ input:focus { border-color: var(--gold); }
 .opp-card-mini .mini-num {
   font-family: 'Roboto', sans-serif;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
   position: absolute;
   top: 3px;
@@ -820,7 +820,7 @@ input:focus { border-color: var(--gold); }
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .cscore-row:last-child { border-bottom: none; }
-.cscore-row.me { color: var(--gold); font-weight: 600; }
+.cscore-row.me { color: var(--gold); font-weight: 400; }
 .cscore-row.active-score .cscore-name::before { content: ''; }
 .cscore-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
