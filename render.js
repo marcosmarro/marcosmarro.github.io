@@ -37,10 +37,10 @@ function renderLayout() {
       { top: '50%', right: '0', left: 'auto', transform: 'translateY(-50%)' }
     ],
     5: [
-      { top: '65%', left: '0', transform: 'translateY(-50%)' },
+      { top: '55%', left: '0', transform: 'translateY(-50%)' },
       { top: '0',   left: '-25px' },
       { top: '0',   right: '-25px', left: 'auto' },
-      { top: '65%', right: '0', left: 'auto', transform: 'translateY(-50%)' }
+      { top: '55%', right: '0', left: 'auto', transform: 'translateY(-50%)' }
     ],
     6: [
       { top: '30%', left: '0', transform: 'translateY(-50%)' },
@@ -128,8 +128,8 @@ function renderOpponentCards() {
     const n = displayHand.length;
     if (n === 0) { el.style.cssText = 'width:0;height:0'; return; }
 
-    const CW = 75, CH = 120;
-    const SIDE_CW = 75, SIDE_CH = 120;
+    const CW = 80, CH = 140;
+    const SIDE_CW = 80, SIDE_CH = 140;
     const CROP = 0.20;
     const isSide = seat === 'left' || seat === 'right';
     const isCorner = seat === 'corner-tl' || seat === 'corner-tr';
@@ -143,7 +143,7 @@ function renderOpponentCards() {
       const hidden = Math.round(CH * CROP);
       el.style.cssText = `position:relative; overflow:visible; width:${totalW}px; height:${CH - hidden}px;`;
       const ARC_R = 500;
-      const angleDeg = 2;
+      const angleDeg = 2.5;
       const topStartAngleDeg = ((n - 1) / 2) * angleDeg;
       displayHand.forEach((card, idx) => {
         const θDeg = topStartAngleDeg - idx * angleDeg;
@@ -164,7 +164,7 @@ function renderOpponentCards() {
       const totalH = n <= 1 ? SIDE_CW : step * (n - 1) + SIDE_CW;
       el.style.cssText = `position:relative; overflow:visible; width:${visibleW}px; height:${totalH}px;`;
 
-      const sideMaxSpread = 2 * (n - 1);
+      const sideMaxSpread = 2.5 * (n - 1);
       const sideAngleStep = n > 1 ? sideMaxSpread / (n - 1) : 0;
       const sideStartAngle = n > 1 ? -sideMaxSpread / 2 : 0;
       const ARC_R = 500;
@@ -229,9 +229,9 @@ function renderOpponentCards() {
     const nameEl = document.getElementById('opp-name-' + p.id);
     if (nameEl) {
       if (seat === 'left') {
-        nameEl.style.cssText = 'position:absolute; top:-20px; left:0; white-space:nowrap;';
+        nameEl.style.cssText = 'position:absolute; top:-30px; left:0; white-space:nowrap;';
       } else if (seat === 'right') {
-        nameEl.style.cssText = 'position:absolute; top:-20px; right:0; left:auto; white-space:nowrap;';
+        nameEl.style.cssText = 'position:absolute; top:-30px; right:0; left:auto; white-space:nowrap;';
       } else if (seat === 'corner-tl') {
         nameEl.style.cssText = 'position:absolute; top:4px; left:29px; white-space:nowrap; z-index:20;';
       } else if (seat === 'corner-tr') {
@@ -366,13 +366,13 @@ function buildPip(card, isLarge) {
 
       const val = document.createElement('div');
       val.className = 'cp-val';
-      val.style.fontSize = '18px';
+      val.style.fontSize = '20px';
       val.style.color = cardColor;
       val.textContent = card.val;
 
       const suit = document.createElement('div');
       suit.className = 'cp-suit';
-      suit.style.fontSize = '14px';
+      suit.style.fontSize = '18px';
       suit.style.color = cardColor;
       suit.textContent = SUIT_SYMBOLS[card.suit] || '';
 
@@ -499,7 +499,7 @@ function updateTopBar() {
   const turnEl = document.getElementById('center-turn-label');
   if (turnEl) {
     turnEl.textContent = currentPlayer
-      ? (isMyTurn() ? '⭐ Your Turn' : `${currentPlayer.name}'s Turn`)
+      ? (isMyTurn() ? 'Your Turn' : `${currentPlayer.name}'s Turn`)
       : '';
   }
 }

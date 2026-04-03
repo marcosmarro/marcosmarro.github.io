@@ -22,7 +22,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 body {
-  font-family: 'Crimson Pro', serif;
+  font-family: 'Roboto', sans-serif;
   background: var(--felt);
   color: #fff;
   height: 100dvh;
@@ -69,9 +69,9 @@ body::before {
 @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
 
 .game-title {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 42px;
-  font-weight: 900;
+  font-weight: 600;
   color: var(--gold);
   text-shadow: 0 2px 20px rgba(200,148,10,0.5), 0 0 40px rgba(200,148,10,0.2);
   letter-spacing: 4px;
@@ -79,7 +79,7 @@ body::before {
 }
 
 .game-subtitle {
-  font-family: 'Crimson Pro', serif;
+  font-family: 'Roboto', sans-serif;
   font-style: italic;
   color: rgba(255,255,255,0.6);
   font-size: 14px;
@@ -87,9 +87,9 @@ body::before {
 }
 
 .btn {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 2px;
   padding: 14px 32px;
   border: none;
@@ -133,9 +133,9 @@ body::before {
 }
 
 .btn-sm {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 1.5px;
   padding: 10px 20px;
   border-radius: 4px;
@@ -168,7 +168,7 @@ body::before {
 }
 
 .panel h2 {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 20px;
   color: var(--gold);
   text-align: center;
@@ -183,7 +183,7 @@ input[type=text], input[type=number] {
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 6px;
   color: #fff;
-  font-family: 'Crimson Pro', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 18px;
   padding: 10px 14px;
   outline: none;
@@ -194,9 +194,9 @@ input:focus { border-color: var(--gold); }
 
 .code-display {
   text-align: center;
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 36px;
-  font-weight: 900;
+  font-weight: 600;
   color: var(--gold);
   letter-spacing: 10px;
   background: rgba(0,0,0,0.4);
@@ -244,7 +244,7 @@ input:focus { border-color: var(--gold); }
   color: rgba(255,255,255,0.7);
   border-radius: 8px;
   padding: 8px 16px;
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 11px;
   letter-spacing: 1px;
   cursor: pointer;
@@ -280,12 +280,12 @@ input:focus { border-color: var(--gold); }
 
 .opponent-name {
   position: absolute;
-  font-family: 'Cinzel', serif;
-  font-size: 12px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 15px;
   color: rgba(255,255,255,0.7);
   letter-spacing: 0.5px;
   white-space: nowrap;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.85);
   padding: 2px 7px;
   border-radius: 8px;
   pointer-events: none;
@@ -336,8 +336,8 @@ input:focus { border-color: var(--gold); }
 }
 
 .pile-label {
-  font-family: 'Cinzel', serif;
-  font-size: 10px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
   letter-spacing: 1px;
   color: rgba(255,255,255,0.4);
   text-transform: uppercase;
@@ -395,7 +395,7 @@ input:focus { border-color: var(--gold); }
   content: '♛';
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 14px; color: rgba(200,148,10,0.4);
+  font-size: 15px; color: rgba(200,148,10,0.4);
 }
 .opp-card-mini.face-down.wild-card { border-color: #2d7a3a; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
 
@@ -408,7 +408,7 @@ input:focus { border-color: var(--gold); }
 .cp.tl { top: 4px; left: 4px; }
 .cp.br { bottom: 4px; right: 4px; transform: rotate(180deg); }
 
-.cp-val { font-family: 'Cinzel', serif; font-weight: 900; line-height: 1; white-space: nowrap; color: #222; }
+.cp-val { font-family: 'Roboto', sans-serif; font-weight: 600; line-height: 1; white-space: nowrap; color: #222; }
 .cp-suit { line-height: 1; white-space: nowrap; color: #222; }
 
 /* Suit colors */
@@ -421,7 +421,7 @@ input:focus { border-color: var(--gold); }
 
 /* Joker vertical letters */
 .cp-joker { display: flex; flex-direction: column; line-height: 1; }
-.cp-joker span { font-family: 'Cinzel', serif; font-weight: 900; line-height: 1.1; display: block; }
+.cp-joker span { font-family: 'Roboto', sans-serif; font-weight: 600; line-height: 1.1; display: block; }
 .jc-0 { color: #2d7a3a; }  /* J = clubs    = green  */
 .jc-1 { color: #c0392b; }  /* O = hearts   = red    */
 .jc-2 { color: #4a4a6a; }  /* K = spades   = slate  */
@@ -507,8 +507,8 @@ input:focus { border-color: var(--gold); }
 
 /* ===== ACTION BUTTON STYLES ===== */
 .action-btn {
-  font-family: 'Cinzel', serif;
-  font-size: 10px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 1px;
   padding: 8px 6px;
@@ -570,11 +570,11 @@ input:focus { border-color: var(--gold); }
   z-index: 20;
 }
 #drawn-card-label {
-  font-size: 10px;
+  font-size: 11px;
   color: rgba(255,255,255,0.5);
   letter-spacing: 1px;
   text-transform: uppercase;
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
 }
 
 /* ===== ANIMATIONS ===== */
@@ -623,7 +623,7 @@ input:focus { border-color: var(--gold); }
   padding: 10px 20px;
   border-radius: 20px;
   font-size: 13px;
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   letter-spacing: 1px;
   z-index: 999;
   pointer-events: none;
@@ -660,7 +660,7 @@ input:focus { border-color: var(--gold); }
 }
 
 .modal h2 {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   color: var(--gold);
   font-size: 22px;
   text-align: center;
@@ -674,8 +674,8 @@ input:focus { border-color: var(--gold); }
   margin: 12px 0;
 }
 .score-table th {
-  font-family: 'Cinzel', serif;
-  font-size: 11px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
   letter-spacing: 1px;
   color: rgba(255,255,255,0.5);
   padding: 6px 8px;
@@ -684,11 +684,11 @@ input:focus { border-color: var(--gold); }
 }
 .score-table td {
   padding: 8px 8px;
-  font-size: 15px;
+  font-size: 18px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .score-table tr.leader td { color: var(--gold); }
-.score-table .round-score { color: rgba(255,255,255,0.5); font-size: 13px; }
+.score-table .round-score { color: rgba(255,255,255,0.5); font-size: 14px; }
 
 /* ===== WENT OUT OVERLAY ===== */
 #went-out-overlay {
@@ -705,9 +705,9 @@ input:focus { border-color: var(--gold); }
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 600;
   color: var(--gold);
   text-align: center;
   text-shadow: 0 0 30px rgba(200,148,10,0.8);
@@ -736,9 +736,9 @@ input:focus { border-color: var(--gold); }
   position: absolute;
 }
 .opp-card-mini .mini-num {
-  font-family: 'Cinzel', serif;
-  font-size: 11px;
-  font-weight: 900;
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
   position: absolute;
   top: 3px;
@@ -767,7 +767,7 @@ input:focus { border-color: var(--gold); }
 #dealing-screen.show { opacity: 1; }
 
 #dealing-status {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 20px;
   color: var(--gold);
   text-align: center;
@@ -801,7 +801,7 @@ input:focus { border-color: var(--gold); }
   margin-top: 10px;
 }
 #center-scores-title {
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
   font-size: 10px;
   letter-spacing: 1.5px;
   color: rgba(255,255,255,0.35);
@@ -813,7 +813,7 @@ input:focus { border-color: var(--gold); }
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  font-size: 12px;
+  font-size: 15px;
   color: rgba(255,255,255,0.65);
   width: 120px;
   padding: 2px 0;
@@ -825,6 +825,6 @@ input:focus { border-color: var(--gold); }
 .cscore-name {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 100px;
-  font-family: 'Cinzel', serif;
+  font-family: 'Roboto', sans-serif;
 }
-.cscore-pts { flex-shrink: 0; font-family: 'Cinzel', serif; }
+.cscore-pts { flex-shrink: 0; font-family: 'Roboto', sans-serif; }
