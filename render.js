@@ -851,6 +851,7 @@ let dragState = null;
 
 function startDrag(e) {
   if (dragState) return;
+  if (G.dealing) return;  // don't start drags while cards are being dealt
   const touch = e.touches ? e.touches[0] : e;
   const topEl = document.elementFromPoint(touch.clientX, touch.clientY);
   if (topEl !== e.currentTarget && !e.currentTarget.contains(topEl)) return;

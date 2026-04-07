@@ -1152,7 +1152,7 @@ function startRound() {
 // DRAWING CARDS
 // ========================
 function drawFromDeck() {
-  if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns')) return;
+  if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns') || G.dealing) return;
 
   if (!G.botGame) {
     // Send action to host; host picks the card, pushes state+anim for everyone
@@ -1186,7 +1186,7 @@ function drawFromDeck() {
 }
 
 function drawFromDiscard() {
-  if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns')) return;
+  if (!isMyTurn() || G.drawnCard !== null || (G.phase !== 'draw' && G.phase !== 'lastTurns') || G.dealing) return;
   if (G.discardPile.length === 0) { showToast('Discard pile is empty!'); return; }
 
   if (!G.botGame) {
