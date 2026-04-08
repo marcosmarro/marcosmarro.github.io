@@ -196,7 +196,7 @@ function renderOpponentCards() {
 
     } else if (isCorner) {
       const isLeft2 = seat === 'corner-tl';
-      const angStep2 = Math.max(1, 10 - Math.floor((G.round - 1) / 2));
+      const angStep2 = Math.max(1, 9 - Math.floor((G.round - 1) / 2));
       const totalSpread2 = angStep2 * (n - 1);
       const centerAngle = isLeft2 ? 40 : 145;
       const startAngle = centerAngle - totalSpread2 / 2;
@@ -366,7 +366,7 @@ function buildPip(card, isLarge) {
 
       const val = document.createElement('div');
       val.className = 'cp-val';
-      val.style.fontSize = '20px';
+      val.style.fontSize = '22px';
       val.style.color = cardColor;
       val.textContent = card.val;
 
